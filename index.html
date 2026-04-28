@@ -671,11 +671,12 @@
     if (!usarFirebase) return;
 
     try {
-      await db.collection("estoque").doc("dados").set({
+await db.collection("estoque").doc("dados").set({
   estoque: JSON.stringify(estoque),
   historico: JSON.stringify(historico),
   banco: JSON.stringify(banco),
   etiquetasPendentes: JSON.stringify(etiquetasPendentes),
+  opcaoDataProducao: opcaoDataProducao,
   ultimaAtualizacao: new Date().toISOString()
 });
     } catch (e) {
@@ -696,24 +697,31 @@ window.escutarFirebase = function() {
       let novoHistorico = JSON.parse(dados.historico || '[]');
       let novoBanco = JSON.parse(dados.banco || '{}');
       let novasPendentes = JSON.parse(dados.etiquetasPendentes || '[]');
+let novaOpcaoData = dados.opcaoDataProducao || 'geracao';
 
       let estoqueAtual = JSON.stringify(estoque);
       let historicoAtual = JSON.stringify(historico);
       let pendentesAtual = JSON.stringify(etiquetasPendentes);
+let opcaoDataAtual = opcaoDataProducao;
 
-      if (JSON.stringify(novoEstoque) !== estoqueAtual ||
-          JSON.stringify(novoHistorico) !== historicoAtual ||
-          JSON.stringify(novasPendentes) !== pendentesAtual) {
+     if (JSON.stringify(novoEstoque) !== estoqueAtual ||
+    JSON.stringify(novoHistorico) !== historicoAtual ||
+    JSON.stringify(novasPendentes) !== pendentesAtual ||
+    novaOpcaoData !== opcaoDataAtual) {
         
         estoque = novoEstoque;
         historico = novoHistorico;
         banco = novoBanco;
         etiquetasPendentes = novasPendentes;
-        
-        localStorage.setItem("estoque", JSON.stringify(estoque));
-        localStorage.setItem("historico", JSON.stringify(historico));
-        localStorage.setItem("bancoCustom", JSON.stringify(banco));
-        localStorage.setItem("etiquetasPendentes", JSON.stringify(etiquetasPendentes));
+opcaoDataProducao = novaOpcaoData;
+
+localStorage.setItem("estoque", JSON.stringify(estoque));
+localStorage.setItem("historico", JSON.stringify(historico));
+localStorage.setItem("bancoCustom", JSON.stringify(banco));
+localStorage.setItem("etiquetasPendentes", JSON.stringify(etiquetasPendentes));
+localStorage.setItem("opcaoDataProducao", opcaoDataProducao);
+
+atualizarCampoDataManualGerador();
         
         atualizarTudo();
         atualizarBotaoPendentesConfig();
