@@ -225,11 +225,11 @@ function carregarDados() {
     if (header) header.style.display = '';
     if (nav) nav.style.display = '';
   }
-}
 
-function salvarDados() {
-  localStorage.setItem("estoque", JSON.stringify(estoque));
-  localStorage.setItem("historico", JSON.stringify(historico));
+  // Inicia escuta do Firebase
+  if (typeof escutarFirebase === 'function') {
+    escutarFirebase();
+  }
 }
 
 /* ================= BANCO NO LOCALSTORAGE ================= */
