@@ -522,8 +522,6 @@
           <span class="switch-slider"></span>
         </label>
       </div>
-<button class="btn-opcao btn-editar-opcao" onclick="sincronizarComFirebase()">🔄 Sincronizar com Firebase</button>
-<button class="btn-opcao btn-consumir-opcao" onclick="enviarParaFirebase()">📤 Enviar para Firebase</button>
       <button class="btn-opcao btn-cancelar-opcao" onclick="fecharModalConfig()">Fechar</button>
     </div>
 
@@ -655,8 +653,8 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
-  // Enviar dados locais para o Firebase
-  window.enviarParaFirebase = async function() {
+  // Salva no Firebase automaticamente
+  window.salvarNoFirebase = async function() {
     try {
       await db.collection("estoque").doc("dados").set({
         estoque: JSON.stringify(estoque),
@@ -664,37 +662,36 @@
         banco: JSON.stringify(banco),
         ultimaAtualizacao: new Date().toISOString()
       });
-      mostrarToast('Dados enviados para o Firebase');
     } catch (e) {
-      console.error('Erro ao enviar:', e);
-      mostrarToast('Erro ao enviar', 'erro');
+      console.error("Erro ao salvar no Firebase:", e);
     }
   };
 
-  // Baixar dados do Firebase para o dispositivo
-  window.sincronizarComFirebase = async function() {
-    try {
-      let docSnap = await db.collection("estoque").doc("dados").get();
-
+  // Escuta mudanças em tempo real
+  window.escutarFirebase = function() {
+    db.collection("estoque").doc("dados").onSnapshot(function(docSnap) {
       if (docSnap.exists) {
         let dados = docSnap.data();
-        estoque = JSON.parse(dados.estoque || '{}');
-        historico = JSON.parse(dados.historico || '[]');
-        banco = JSON.parse(dados.banco || '{}');
+        let novoEstoque = JSON.parse(dados.estoque || '{}');
+        let novoHistorico = JSON.parse(dados.historico || '[]');
+        let novoBanco = JSON.parse(dados.banco || '{}');
 
-        localStorage.setItem("estoque", JSON.stringify(estoque));
-        localStorage.setItem("historico", JSON.stringify(historico));
-        localStorage.setItem("bancoCustom", JSON.stringify(banco));
+        let estoqueAtual = JSON.stringify(estoque);
+        let historicoAtual = JSON.stringify(historico);
 
-        atualizarTudo();
-        mostrarToast('Dados sincronizados do Firebase');
-      } else {
-        mostrarToast('Nenhum dado encontrado no Firebase', 'erro');
+        if (JSON.stringify(novoEstoque) !== estoqueAtual ||
+            JSON.stringify(novoHistorico) !== historicoAtual) {
+          estoque = novoEstoque;
+          historico = novoHistorico;
+          banco = novoBanco;
+          localStorage.setItem("estoque", JSON.stringify(estoque));
+          localStorage.setItem("historico", JSON.stringify(historico));
+          localStorage.setItem("bancoCustom", JSON.stringify(banco));
+          atualizarTudo();
+          console.log("Dados sincronizados do Firebase");
+        }
       }
-    } catch (e) {
-      console.error('Erro ao sincronizar:', e);
-      mostrarToast('Erro ao sincronizar', 'erro');
-    }
+    });
   };
 
   // Verificar senha
