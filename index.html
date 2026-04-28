@@ -522,6 +522,16 @@
           <span class="switch-slider"></span>
         </label>
       </div>
+<div class="btn-opcao dark-switch-row" onclick="alternarModoArmazenamento()">
+  <div class="dark-switch-label">
+    <span id="armazenamentoIcon">🌐</span>
+    <span id="armazenamentoTexto">Firebase</span>
+  </div>
+  <label class="switch" onclick="event.stopPropagation()">
+    <input type="checkbox" id="armazenamentoToggle" onchange="alternarModoArmazenamento()" checked>
+    <span class="switch-slider"></span>
+  </label>
+</div>
       <button class="btn-opcao btn-cancelar-opcao" onclick="fecharModalConfig()">Fechar</button>
     </div>
 
@@ -653,8 +663,13 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
+  // Modo de armazenamento
+  let usarFirebase = localStorage.getItem('usarFirebase') !== 'false';
+
   // Salva no Firebase automaticamente
   window.salvarNoFirebase = async function() {
+    if (!usarFirebase) return;
+
     try {
       await db.collection("estoque").doc("dados").set({
         estoque: JSON.stringify(estoque),
@@ -669,7 +684,11 @@
 
   // Escuta mudanças em tempo real
   window.escutarFirebase = function() {
+    if (!usarFirebase) return;
+
     db.collection("estoque").doc("dados").onSnapshot(function(docSnap) {
+      if (!usarFirebase) return;
+
       if (docSnap.exists) {
         let dados = docSnap.data();
         let novoEstoque = JSON.parse(dados.estoque || '{}');
@@ -692,6 +711,28 @@
         }
       }
     });
+  };
+
+  // Alternar modo de armazenamento
+  window.alternarModoArmazenamento = function() {
+    usarFirebase = !usarFirebase;
+    localStorage.setItem('usarFirebase', usarFirebase);
+
+    let toggle = document.getElementById('armazenamentoToggle');
+    let icone = document.getElementById('armazenamentoIcon');
+    let texto = document.getElementById('armazenamentoTexto');
+
+    if (toggle) toggle.checked = usarFirebase;
+    if (icone) icone.textContent = usarFirebase ? '🌐' : '📱';
+    if (texto) texto.textContent = usarFirebase ? 'Firebase' : 'Local';
+
+    if (usarFirebase) {
+      escutarFirebase();
+      salvarNoFirebase();
+      mostrarToast('Modo Firebase ativado');
+    } else {
+      mostrarToast('Modo Local ativado');
+    }
   };
 
   // Verificar senha
@@ -744,6 +785,15 @@
 
   document.addEventListener('DOMContentLoaded', function() {
     verificarSessao();
+
+    // Atualizar botão ao carregar
+    let toggle = document.getElementById('armazenamentoToggle');
+    let icone = document.getElementById('armazenamentoIcon');
+    let texto = document.getElementById('armazenamentoTexto');
+
+    if (toggle) toggle.checked = usarFirebase;
+    if (icone) icone.textContent = usarFirebase ? '🌐' : '📱';
+    if (texto) texto.textContent = usarFirebase ? 'Firebase' : 'Local';
   });
 </script>
 <script src="script.js?v=2005"></script>
