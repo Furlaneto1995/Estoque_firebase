@@ -522,16 +522,8 @@
           <span class="switch-slider"></span>
         </label>
       </div>
-<div class="btn-opcao dark-switch-row" onclick="alternarModoArmazenamento()">
-  <div class="dark-switch-label">
-    <span id="armazenamentoIcon">🌐</span>
-    <span id="armazenamentoTexto">Firebase</span>
-  </div>
-  <label class="switch" onclick="event.stopPropagation()">
-    <input type="checkbox" id="armazenamentoToggle" onchange="alternarModoArmazenamento()" checked>
-    <span class="switch-slider"></span>
-  </label>
-</div>
+<button class="btn-opcao btn-editar-opcao" onclick="sincronizarComFirebase()">🔄 Sincronizar com Firebase</button>
+<button class="btn-opcao btn-consumir-opcao" onclick="enviarParaFirebase()">📤 Enviar para Firebase</button>
       <button class="btn-opcao btn-cancelar-opcao" onclick="fecharModalConfig()">Fechar</button>
     </div>
 
@@ -663,9 +655,6 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
-  // Modo de armazenamento
-  let usarFirebase = localStorage.getItem('usarFirebase') !== 'false';
-
   // Salva no Firebase
   window.salvarNoFirebase = async function() {
     if (!usarFirebase) return;
@@ -712,11 +701,6 @@
       }
     });
   };
-
-  // Alternar modo de armazenamento
-  window.alternarModoArmazenamento = function() {
-    usarFirebase = !usarFirebase;
-    localStorage.setItem('usarFirebase', usarFirebase);
 
     let toggle = document.getElementById('armazenamentoToggle');
     let icone = document.getElementById('armazenamentoIcon');
@@ -794,11 +778,47 @@
     }
   };
 
-  // Verificar sessão e atualizar botão ao carregar
-  document.addEventListener('DOMContentLoaded', function() {
-    verificarSessao();
-    atualizarBotaoArmazenamento();
-  });
+  // Baixar dados do Firebase para o dispositivo
+  window.sincronizarComFirebase = async function() {
+    try {
+      let docSnap = await db.collection("estoque").doc("dados").get();
+
+      if (docSnap.exists) {
+        let dados = docSnap.data();
+        estoque = JSON.parse(dados.estoque || '{}');
+        historico = JSON.parse(dados.historico || '[]');
+        banco = JSON.parse(dados.banco || '{}');
+
+        localStorage.setItem("estoque", JSON.stringify(estoque));
+        localStorage.setItem("historico", JSON.stringify(historico));
+        localStorage.setItem("bancoCustom", JSON.stringify(banco));
+
+        atualizarTudo();
+        mostrarToast('Dados sincronizados do Firebase');
+      } else {
+        mostrarToast('Nenhum dado encontrado no Firebase', 'erro');
+      }
+    } catch (e) {
+      console.error('Erro ao sincronizar:', e);
+      mostrarToast('Erro ao sincronizar', 'erro');
+    }
+  };
+
+  // Enviar dados locais para o Firebase
+  window.enviarParaFirebase = async function() {
+    try {
+      await db.collection("estoque").doc("dados").set({
+        estoque: JSON.stringify(estoque),
+        historico: JSON.stringify(historico),
+        banco: JSON.stringify(banco),
+        ultimaAtualizacao: new Date().toISOString()
+      });
+      mostrarToast('Dados enviados para o Firebase');
+    } catch (e) {
+      console.error('Erro ao enviar:', e);
+      mostrarToast('Erro ao enviar', 'erro');
+    }
+  };
 </script>
 <script src="script.js?v=2005"></script>
 
