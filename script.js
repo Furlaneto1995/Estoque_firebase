@@ -218,18 +218,56 @@ function carregarDados() {
   atualizarTabela();
   atualizarHistorico();
 
-  if (typeof escutarFirebase === 'function') {
-    escutarFirebase();
-  }
+  window.escutarFirebase = function() {
+  if (!usarFirebase) return;
+
+  db.collection("estoque").doc("dados").onSnapshot(function(docSnap) {
+    if (!usarFirebase) return;
+
+    if (docSnap.exists) {
+      let dados = docSnap.data();
+      let novoEstoque = JSON.parse(dados.estoque || '{}');
+      let novoHistorico = JSON.parse(dados.historico || '[]');
+      let novoBanco = JSON.parse(dados.banco || '{}');
+
+      let estoqueAtual = JSON.stringify(estoque);
+      let historicoAtual = JSON.stringify(historico);
+
+      if (JSON.stringify(novoEstoque) !== estoqueAtual ||
+          JSON.stringify(novoHistorico) !== historicoAtual) {
+        estoque = novoEstoque;
+        historico = novoHistorico;
+        banco = novoBanco;
+        localStorage.setItem("estoque", JSON.stringify(estoque));
+        localStorage.setItem("historico", JSON.stringify(historico));
+        localStorage.setItem("bancoCustom", JSON.stringify(banco));
+        atualizarTudo();
+        console.log("Dados sincronizados do Firebase");
+      }
+    }
+  });
+};
 }
 
 function salvarDados() {
   localStorage.setItem("estoque", JSON.stringify(estoque));
   localStorage.setItem("historico", JSON.stringify(historico));
+}
 
-  if (typeof salvarNoFirebase === 'function') {
-    salvarNoFirebase();
+  window.salvarNoFirebase = async function() {
+  if (!usarFirebase) return;
+
+  try {
+    await db.collection("estoque").doc("dados").set({
+      estoque: JSON.stringify(estoque),
+      historico: JSON.stringify(historico),
+      banco: JSON.stringify(banco),
+      ultimaAtualizacao: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error("Erro ao salvar no Firebase:", e);
   }
+};
 }
 
 /* ================= BANCO NO LOCALSTORAGE ================= */
