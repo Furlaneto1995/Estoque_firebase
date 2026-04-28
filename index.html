@@ -672,11 +672,12 @@
 
     try {
       await db.collection("estoque").doc("dados").set({
-        estoque: JSON.stringify(estoque),
-        historico: JSON.stringify(historico),
-        banco: JSON.stringify(banco),
-        ultimaAtualizacao: new Date().toISOString()
-      });
+  estoque: JSON.stringify(estoque),
+  historico: JSON.stringify(historico),
+  banco: JSON.stringify(banco),
+  etiquetasPendentes: JSON.stringify(etiquetasPendentes),
+  ultimaAtualizacao: new Date().toISOString()
+});
     } catch (e) {
       console.error("Erro ao salvar no Firebase:", e);
     }
@@ -692,20 +693,23 @@
       if (docSnap.exists) {
         let dados = docSnap.data();
         let novoEstoque = JSON.parse(dados.estoque || '{}');
-        let novoHistorico = JSON.parse(dados.historico || '[]');
-        let novoBanco = JSON.parse(dados.banco || '{}');
+let novoHistorico = JSON.parse(dados.historico || '[]');
+let novoBanco = JSON.parse(dados.banco || '{}');
+let novasPendentes = JSON.parse(dados.etiquetasPendentes || '[]');
 
         let estoqueAtual = JSON.stringify(estoque);
         let historicoAtual = JSON.stringify(historico);
 
         if (JSON.stringify(novoEstoque) !== estoqueAtual ||
             JSON.stringify(novoHistorico) !== historicoAtual) {
-          estoque = novoEstoque;
-          historico = novoHistorico;
-          banco = novoBanco;
-          localStorage.setItem("estoque", JSON.stringify(estoque));
-          localStorage.setItem("historico", JSON.stringify(historico));
-          localStorage.setItem("bancoCustom", JSON.stringify(banco));
+         estoque = novoEstoque;
+historico = novoHistorico;
+banco = novoBanco;
+etiquetasPendentes = novasPendentes;
+localStorage.setItem("estoque", JSON.stringify(estoque));
+localStorage.setItem("historico", JSON.stringify(historico));
+localStorage.setItem("bancoCustom", JSON.stringify(banco));
+localStorage.setItem("etiquetasPendentes", JSON.stringify(etiquetasPendentes));
           atualizarTudo();
           console.log("Dados sincronizados do Firebase");
         }
