@@ -4351,6 +4351,10 @@ function carregarPendentes() {
 function salvarPendentes() {
   localStorage.setItem('etiquetasPendentes', JSON.stringify(etiquetasPendentes));
   atualizarBotaoPendentesConfig();
+
+  if (typeof salvarNoFirebase === 'function') {
+    salvarNoFirebase();
+  }
 }
 
 function atualizarBotaoPendentesConfig() {
