@@ -218,6 +218,14 @@ function carregarDados() {
   atualizarTabela();
   atualizarHistorico();
 
+  // Mostrar app se já logou
+  if (sessionStorage.getItem('logado') === 'true') {
+    let header = document.getElementById('appHeader');
+    let nav = document.getElementById('appNav');
+    if (header) header.style.display = '';
+    if (nav) nav.style.display = '';
+  }
+}
   window.escutarFirebase = function() {
   if (!usarFirebase) return;
 
