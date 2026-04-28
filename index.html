@@ -19,8 +19,65 @@
 
 <body>
 
+<!-- ================= TELA DE LOGIN ================= -->
+<div id="telaLogin" style="
+  position: fixed;
+  inset: 0;
+  background: #eef2f7;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+">
+  <div style="
+    background: white;
+    padding: 24px;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    width: 280px;
+    text-align: center;
+  ">
+    <h2 style="margin:0 0 4px; font-size:20px; color:#1e293b;">🔒 Estoque</h2>
+    <p style="margin:0 0 16px; font-size:13px; color:#64748b;">Digite a senha para acessar</p>
+    <input
+      type="password"
+      id="inputSenha"
+      placeholder="Senha"
+      style="
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #cbd5e1;
+        border-radius: 10px;
+        font-size: 16px;
+        text-align: center;
+        box-sizing: border-box;
+        outline: none;
+        margin-bottom: 12px;
+      "
+      onkeydown="if(event.key==='Enter') verificarSenha()"
+    >
+    <button onclick="verificarSenha()" style="
+      width: 100%;
+      padding: 12px;
+      background: #1e3a8a;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    ">Entrar</button>
+    <div id="loginErro" style="
+      margin-top: 10px;
+      font-size: 13px;
+      color: #dc2626;
+      display: none;
+    ">Senha incorreta</div>
+  </div>
+</div>
+
 <!-- ================= HEADER ================= -->
-<div class="top-header">
+<div class="top-header" id="appHeader" style="display:none">
   <button id="btnDesfazer" class="btn-icon btn-undo" onclick="desfazerAcao()" title="Desfazer">↶</button>
   <h1 class="titulo-conferencia">Conferência de Estoques</h1>
   <button id="btnRefazer" class="btn-icon btn-redo" onclick="refazerAcao()" title="Refazer">↷</button>
@@ -31,7 +88,7 @@
 </div>
 
 <!-- ================= NAVEGAÇÃO ================= -->
-<div class="nav-top">
+<div class="nav-top" id="appNav" style="display:none">
   <button onclick="mostrarTela('movimentar')" class="btn-main">Movimentação</button>
   <button onclick="mostrarTela('estoque')" class="btn-main">Estoque</button>
   <button onclick="mostrarTela('historico')" class="btn-main">Histórico</button>
@@ -634,6 +691,59 @@ const firebaseConfig = {
       }
     });
   };
+
+  // Verificar senha
+  window.verificarSenha = async function() {
+    let senhaDigitada = document.getElementById('inputSenha').value;
+    let erroDiv = document.getElementById('loginErro');
+
+    if (!senhaDigitada) {
+      erroDiv.textContent = 'Digite a senha';
+      erroDiv.style.display = 'block';
+      return;
+    }
+
+    try {
+      let docSnap = await db.collection("config").doc("auth").get();
+
+      if (docSnap.exists) {
+        let senhaCorreta = docSnap.data().senha;
+
+        if (senhaDigitada === senhaCorreta) {
+          document.getElementById('telaLogin').style.display = 'none';
+          document.getElementById('appHeader').style.display = '';
+          document.getElementById('appNav').style.display = '';
+          sessionStorage.setItem('logado', 'true');
+        } else {
+          erroDiv.textContent = 'Senha incorreta';
+          erroDiv.style.display = 'block';
+          document.getElementById('inputSenha').value = '';
+          if (navigator.vibrate) navigator.vibrate([200]);
+        }
+      } else {
+        erroDiv.textContent = 'Erro: configuração não encontrada';
+        erroDiv.style.display = 'block';
+      }
+    } catch (e) {
+      console.error('Erro ao verificar senha:', e);
+      erroDiv.textContent = 'Erro de conexão';
+      erroDiv.style.display = 'block';
+    }
+  };
+
+  // Auto-login se já logou nesta sessão
+  window.verificarSessao = function() {
+    if (sessionStorage.getItem('logado') === 'true') {
+      document.getElementById('telaLogin').style.display = 'none';
+      document.getElementById('appHeader').style.display = '';
+      document.getElementById('appNav').style.display = '';
+    }
+  };
+
+  // Verificar sessão ao carregar
+  document.addEventListener('DOMContentLoaded', function() {
+    verificarSessao();
+  });
 </script>
 
 <script src="script.js?v=2005"></script>
