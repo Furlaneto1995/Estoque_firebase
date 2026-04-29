@@ -466,7 +466,6 @@ function movimentar(tipoMov){
 
   if(tipoMov === 'remove'){
     if(!estoque[identificador] || estoque[identificador] <= 0){ mostrarToast("Sem saldo disponível", 'erro'); return; }
-    if(qtd > estoque[identificador]){ mostrarToast("Peso maior que o saldo disponível", 'erro'); return; }
     abrirModalSaida(identificador, qtd);
     return;
   } else {
@@ -1927,16 +1926,189 @@ function atualizarTudo() {
 
 /* ================= SAÍDA COM SELEÇÃO DE BOBINAS ================= */
 
-let saidaAtual = { identificador: null, pesoTotal: 0, pesoRestante: 0, bobinas: [], descontos: {}, zeradas: [] };
+let modoSugestao = 'peso'; // 'peso' ou 'idade'
+let saidaAtual = { identificador: null, pesoTotal: 0, pesoRestante: 0, bobinas: [], descontos: {}, zeradas: [], combinacoes: [], comboAtual: 0 };
 let bobinaZeradaAtual = null;
 
+function encontrarMelhorCombinacao(bobinas, pesoAlvo) {
+  return encontrarTodasCombinacoes(bobinas, pesoAlvo)[0] || [];
+}
+function alternarModoSugestao() {
+  modoSugestao = modoSugestao === 'peso' ? 'idade' : 'peso';
+  recalcularSugestoes();
+}
+
+function recalcularSugestoes() {
+  if (modoSugestao === 'idade') {
+    let pesoAlvo = saidaAtual.pesoTotal;
+    let bobinas = saidaAtual.bobinas;
+    let n = bobinas.length;
+
+    // Sugestão 1: FIFO puro (mais velhas até atingir o peso)
+    let combo1 = [];
+    let soma1 = 0;
+    for (let i = 0; i < n; i++) {
+      combo1.push(i);
+      soma1 += bobinas[i].qtd;
+      if (soma1 >= pesoAlvo) break;
+    }
+
+    // Sugestão 2: FIFO com uma a menos
+    let combo2 = combo1.length > 1 ? combo1.slice(0, -1) : [];
+
+    // Sugestão 3: FIFO puro + próxima mais velha disponível
+    let combo3 = [...combo1];
+    if (combo3.length < n) {
+      combo3.push(combo3.length);
+    }
+
+    // Monta lista com diferenças
+    let candidatas = [
+      { indices: combo1, soma: combo1.reduce((a, i) => a + bobinas[i].qtd, 0) },
+      { indices: combo2, soma: combo2.reduce((a, i) => a + bobinas[i].qtd, 0) },
+      { indices: combo3, soma: combo3.reduce((a, i) => a + bobinas[i].qtd, 0) }
+    ];
+
+    // Adiciona diferença absoluta
+    candidatas.forEach(c => { c.diffAbs = Math.abs(c.soma - pesoAlvo); });
+
+    // Remove vazias e duplicadas
+    let combos = [];
+    let chaves = new Set();
+
+    candidatas.forEach(c => {
+      if (c.indices.length === 0) return;
+      let ch = Math.round(c.soma) + '|' + c.indices.length;
+      if (!chaves.has(ch)) {
+        chaves.add(ch);
+        combos.push(c);
+      }
+    });
+
+    // Ordena pela mais próxima de zero
+    combos.sort((a, b) => {
+      if (a.diffAbs !== b.diffAbs) return a.diffAbs - b.diffAbs;
+      return a.indices.length - b.indices.length;
+    });
+
+    saidaAtual.combinacoes = combos.slice(0, 3).map(c => c.indices);
+
+  } else {
+    saidaAtual.combinacoes = encontrarTodasCombinacoes(saidaAtual.bobinas, saidaAtual.pesoTotal);
+  }
+
+  // Aplica a primeira combinação e renderiza
+  saidaAtual.comboAtual = 0;
+  saidaAtual.descontos = {};
+  saidaAtual.zeradas = [];
+
+  if (saidaAtual.combinacoes.length > 0) {
+    saidaAtual.combinacoes[0].forEach(idx => {
+      let indexReal = historico.indexOf(saidaAtual.bobinas[idx]);
+      saidaAtual.descontos[indexReal] = saidaAtual.bobinas[idx].qtd;
+      saidaAtual.zeradas.push(indexReal);
+    });
+  }
+
+  renderizarBobinasSaida();
+}
+
+window.alternarModoSugestao = alternarModoSugestao;
+
+function encontrarTodasCombinacoes(bobinas, pesoAlvo) {
+  let n = bobinas.length;
+  let todas = [];
+
+  if (n <= 20) {
+    let totalCombinacoes = Math.pow(2, n);
+
+    for (let mask = 1; mask < totalCombinacoes; mask++) {
+      let soma = 0;
+      let indices = [];
+
+      for (let i = 0; i < n; i++) {
+        if (mask & (1 << i)) {
+          soma += bobinas[i].qtd;
+          indices.push(i);
+        }
+      }
+
+      todas.push({
+        indices,
+        soma,
+        diffAbs: Math.abs(soma - pesoAlvo)
+      });
+    }
+  } else {
+    // fallback simples para muitos itens
+    let ordenadas = bobinas
+      .map((b, i) => ({ idx: i, peso: b.qtd }))
+      .sort((a, b) => b.peso - a.peso);
+
+    let tentativas = [];
+
+    // tentativa 1: maiores primeiro
+    let soma1 = 0, idx1 = [];
+    for (let b of ordenadas) {
+      idx1.push(b.idx);
+      soma1 += b.peso;
+      if (soma1 >= pesoAlvo) break;
+    }
+    tentativas.push({ indices: idx1, soma: soma1, diffAbs: Math.abs(soma1 - pesoAlvo) });
+
+    // tentativa 2: menores primeiro
+    let asc = [...ordenadas].reverse();
+    let soma2 = 0, idx2 = [];
+    for (let b of asc) {
+      idx2.push(b.idx);
+      soma2 += b.peso;
+      if (soma2 >= pesoAlvo) break;
+    }
+    tentativas.push({ indices: idx2, soma: soma2, diffAbs: Math.abs(soma2 - pesoAlvo) });
+
+    // tentativa 3: começando do segundo maior
+    let soma3 = 0, idx3 = [];
+    for (let i = 1; i < ordenadas.length; i++) {
+      idx3.push(ordenadas[i].idx);
+      soma3 += ordenadas[i].peso;
+      if (soma3 >= pesoAlvo) break;
+    }
+    if (idx3.length) {
+      tentativas.push({ indices: idx3, soma: soma3, diffAbs: Math.abs(soma3 - pesoAlvo) });
+    }
+
+    todas = tentativas;
+  }
+
+  // Ordena pelas mais próximas de zero
+  todas.sort((a, b) => {
+    if (a.diffAbs !== b.diffAbs) return a.diffAbs - b.diffAbs;
+    if (a.indices.length !== b.indices.length) return a.indices.length - b.indices.length;
+    return a.soma - b.soma;
+  });
+
+  // Remove duplicadas por resultado final
+  let unicas = [];
+  let vistas = new Set();
+
+  todas.forEach(combo => {
+    let chave = Math.round(combo.soma) + '|' + combo.indices.length;
+    if (!vistas.has(chave)) {
+      vistas.add(chave);
+      unicas.push(combo);
+    }
+  });
+
+  return unicas.slice(0, 3).map(c => c.indices);
+}
 function abrirModalSaida(identificador, pesoSaida) {
   saidaAtual.identificador = identificador;
   saidaAtual.pesoTotal = pesoSaida;
   saidaAtual.pesoRestante = pesoSaida;
   saidaAtual.descontos = {};
   saidaAtual.zeradas = [];
-  let entradas = historico.filter(h => h.item === identificador && h.tipo === "Entrada" && !h.consumida);
+  
+  let entradas = historico.filter(h => h.item === identificador && h.tipo === "Entrada" && !h.consumida && !h._removidaEstoque);
   let pesoAtual = estoque[identificador] || 0;
   let bobinas = [], soma = 0;
   for (let i = entradas.length - 1; i >= 0; i--) {
@@ -1945,66 +2117,331 @@ function abrirModalSaida(identificador, pesoSaida) {
     soma += entradas[i].qtd;
   }
   saidaAtual.bobinas = bobinas;
-  document.getElementById('modalSaidaTitulo').textContent = 'Saída — ' + identificador;
+
+  // Calcula combinações e aplica a primeira
+  saidaAtual.combinacoes = encontrarTodasCombinacoes(bobinas, pesoSaida);
+  saidaAtual.comboAtual = 0;
+  aplicarCombinacao(0);
+
+  // Define o título simples: Item - Versão
+  document.getElementById('modalSaidaTitulo').textContent = identificador;
+  
   renderizarBobinasSaida();
   document.getElementById('modalSaida').classList.remove('hidden');
 }
 
+function aplicarCombinacao(indice) {
+  if (indice < 0 || indice >= saidaAtual.combinacoes.length) return;
+  saidaAtual.comboAtual = indice;
+  saidaAtual.descontos = {};
+  saidaAtual.zeradas = [];
+
+  saidaAtual.combinacoes[indice].forEach(idx => {
+    let indexReal = historico.indexOf(saidaAtual.bobinas[idx]);
+    saidaAtual.descontos[indexReal] = saidaAtual.bobinas[idx].qtd;
+    saidaAtual.zeradas.push(indexReal);
+  });
+
+  renderizarBobinasSaida();
+}
+
+function proximaCombinacao() {
+  let proximo = saidaAtual.comboAtual + 1;
+  if (proximo >= saidaAtual.combinacoes.length) proximo = 0;
+  aplicarCombinacao(proximo);
+}
+
+function combinacaoAnterior() {
+  let anterior = saidaAtual.comboAtual - 1;
+  if (anterior < 0) anterior = saidaAtual.combinacoes.length - 1;
+  aplicarCombinacao(anterior);
+}
+
+window.proximaCombinacao = proximaCombinacao;
+window.combinacaoAnterior = combinacaoAnterior;
+
 function renderizarBobinasSaida() {
   let tbody = document.getElementById('modalSaidaBody');
   let html = '';
+  let totalSelecionado = 0;
+  let opPeso = Math.round(saidaAtual.pesoTotal);
+
   saidaAtual.bobinas.forEach((bob, idx) => {
     let indexReal = historico.indexOf(bob);
-    let desconto = saidaAtual.descontos[indexReal] || 0;
-    let pesoAtualBob = bob.qtd - desconto;
-    let jaSelecionada = desconto > 0;
-    let zerada = saidaAtual.zeradas.includes(indexReal);
-    let classe = zerada ? 'bobina-descontada' : (jaSelecionada ? 'bobina-selecionada' : '');
-    let checado = jaSelecionada ? 'checked' : '';
-    let desabilitado = (saidaAtual.pesoRestante <= 0 && !jaSelecionada) ? 'disabled' : '';
+    let selecionada = saidaAtual.zeradas.includes(indexReal);
+    if (selecionada) totalSelecionado += bob.qtd;
+
+    let classe = '';
+    if (selecionada) {
+      classe = 'bobina-marcada';
+    }
+
     html += `
       <tr class="${classe}">
-        <td><input type="radio" ${checado} ${desabilitado} onclick="selecionarBobinaSaida(${indexReal})" style="width:16px;height:16px;margin:0;cursor:pointer;"></td>
-        <td><strong>${idx+1}</strong></td>
-        <td style="font-size:11px;">${bob.data}</td>
-        <td><strong>${Math.round(pesoAtualBob)}</strong></td>
+        <td>
+          <input
+            type="radio"
+            ${selecionada ? 'checked' : ''}
+            onclick="selecionarBobinaSaida(${indexReal})"
+            style="width:18px;height:18px;margin:0;cursor:pointer;"
+          >
+        </td>
+        <td style="font-size:14px;"><strong>${idx + 1}</strong></td>
+        <td style="font-size:13px;">${bob.data}</td>
+        <td style="font-size:15px;"><strong>${formatarPeso(bob.qtd)}</strong></td>
       </tr>
     `;
   });
-  tbody.innerHTML = html;
-  document.getElementById('modalSaidaRestante').textContent = 'Restante: ' + Math.round(saidaAtual.pesoRestante) + ' kg';
-}
 
+  tbody.innerHTML = html;
+
+  let diferenca = totalSelecionado - opPeso;
+
+  // ===== TÍTULO =====
+  let titulo = document.getElementById('modalSaidaTitulo');
+  let partes = saidaAtual.identificador.split(' - V');
+  let item = partes[0];
+  let versao = partes[1] || '';
+  let tipo = descobrirTipoPorItem(item);
+
+  let corTipo = '#64748b', fundoTipo = '#f1f5f9';
+  if (tipo === 'brf') { corTipo = '#1d4ed8'; fundoTipo = '#dbeafe'; }
+  else if (tipo === 'tampas') { corTipo = '#15803d'; fundoTipo = '#dcfce7'; }
+  else if (tipo === 'laminacao') { corTipo = '#c2410c'; fundoTipo = '#ffedd5'; }
+
+  let iconeAtivo = modoSugestao === 'peso' ? '⚖️' : '📅';
+  let tooltipAtivo = modoSugestao === 'peso' ? 'Modo: melhor peso' : 'Modo: mais antigas';
+
+  titulo.innerHTML = `
+    <div style="
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      width:100%;
+      gap:6px;
+    ">
+      <div style="
+        display:flex;
+        align-items:center;
+        gap:6px;
+        line-height:1.2;
+        overflow:hidden;
+      ">
+        <span style="
+          display:inline-flex;
+          align-items:center;
+          padding:2px 7px;
+          border-radius:999px;
+          font-size:10px;
+          font-weight:700;
+          letter-spacing:0.3px;
+          background:${fundoTipo};
+          color:${corTipo};
+          white-space:nowrap;
+          flex-shrink:0;
+        ">${nomeBonitoTipo(tipo)}</span>
+
+        <span style="
+          font-size:15px;
+          font-weight:700;
+          color:#0f172a;
+          white-space:nowrap;
+          overflow:hidden;
+          text-overflow:ellipsis;
+        ">${item}</span>
+
+        <span style="
+          display:inline-flex;
+          align-items:center;
+          padding:2px 6px;
+          border-radius:999px;
+          font-size:11px;
+          font-weight:700;
+          background:#e2e8f0;
+          color:#475569;
+          flex-shrink:0;
+        ">V${versao}</span>
+      </div>
+
+      <button onclick="alternarModoSugestao()" title="${tooltipAtivo}" style="
+        width:32px;
+        height:32px;
+        padding:0;
+        border:1px solid #e2e8f0;
+        border-radius:8px;
+        background:#f8fafc;
+        cursor:pointer;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        font-size:16px;
+        flex-shrink:0;
+        transition:transform 0.1s ease;
+      ">${iconeAtivo}</button>
+    </div>
+  `;
+
+  // ===== STATUS =====
+  let statusTexto = '';
+  let statusCor = '#dc2626';
+
+  if (totalSelecionado === 0) {
+    statusTexto = `${formatarPeso(0)} / ${formatarPeso(opPeso)}`;
+    statusCor = '#dc2626';
+  } else {
+    if (diferenca === 0) {
+      statusTexto = `${formatarPeso(totalSelecionado)} / ${formatarPeso(opPeso)}`;
+      statusCor = '#16a34a';
+    } else if (diferenca > 0) {
+      statusTexto = `${formatarPeso(totalSelecionado)} / ${formatarPeso(opPeso)} (+${formatarPeso(diferenca)} kg)`;
+      statusCor = '#16a34a';
+    } else {
+      statusTexto = `${formatarPeso(totalSelecionado)} / ${formatarPeso(opPeso)} (-${formatarPeso(Math.abs(diferenca))} kg)`;
+      statusCor = '#dc2626';
+    }
+  }
+
+  // ===== BLOCO SUGESTÕES =====
+  let containerStatus = document.getElementById('saidaStatusContainer');
+  let headerSaida = document.querySelector('#modalSaida .modal-saida-header');
+
+  if (!containerStatus) {
+    containerStatus = document.createElement('div');
+    containerStatus.id = 'saidaStatusContainer';
+
+    let restanteAntigo = document.getElementById('modalSaidaRestante');
+    if (restanteAntigo) restanteAntigo.style.display = 'none';
+
+    if (headerSaida) {
+      headerSaida.style.paddingBottom = '4px';
+      headerSaida.insertAdjacentElement('afterend', containerStatus);
+    }
+  }
+
+  containerStatus.style.cssText = `
+    width:100%;
+    margin:4px 0 6px;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    border-bottom:1px solid #e2e8f0;
+    padding-bottom:8px;
+  `;
+
+  // Botões de navegação
+  let navHtml = '';
+  if (saidaAtual.combinacoes.length > 1) {
+    navHtml = `
+      <button onclick="combinacaoAnterior()" style="
+        width:28px;
+        height:28px;
+        padding:0;
+        border:none;
+        border-radius:6px;
+        background:#1e3a8a;
+        color:#ffffff;
+        cursor:pointer;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        font-size:12px;
+        font-weight:700;
+        flex-shrink:0;
+      ">◀</button>
+
+      <span style="
+        font-size:12px;
+        font-weight:600;
+        color:#64748b;
+        min-width:30px;
+        text-align:center;
+        font-variant-numeric:tabular-nums;
+        flex-shrink:0;
+      ">${saidaAtual.comboAtual + 1}/${saidaAtual.combinacoes.length}</span>
+
+      <button onclick="proximaCombinacao()" style="
+        width:28px;
+        height:28px;
+        padding:0;
+        border:none;
+        border-radius:6px;
+        background:#1e3a8a;
+        color:#ffffff;
+        cursor:pointer;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        font-size:12px;
+        font-weight:700;
+        flex-shrink:0;
+      ">▶</button>
+    `;
+  }
+
+  let labelModo = modoSugestao === 'peso' ? 'Sugestões por peso:' : 'Sugestões por idade:';
+  let labelSugestao = saidaAtual.combinacoes.length > 1
+    ? `<div style="font-size:11px; color:#94a3b8; font-weight:500;">${labelModo}</div>`
+    : '';
+
+  containerStatus.innerHTML = `
+    ${labelSugestao}
+    <div style="
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      width:100%;
+      gap:6px;
+    ">
+      <div style="
+        font-size:15px;
+        font-weight:700;
+        color:${statusCor};
+        font-variant-numeric:tabular-nums;
+        white-space:nowrap;
+      ">${statusTexto}</div>
+
+      <div style="
+        display:flex;
+        align-items:center;
+        gap:4px;
+        flex-shrink:0;
+      ">
+        ${navHtml}
+      </div>
+    </div>
+  `;
+}
 function selecionarBobinaSaida(indexReal) {
   let bob = historico[indexReal];
   if (!bob) return;
-  if (saidaAtual.descontos[indexReal]) {
-    saidaAtual.pesoRestante += saidaAtual.descontos[indexReal];
+
+  let pos = saidaAtual.zeradas.indexOf(indexReal);
+  if (pos !== -1) {
+    // Desselecionar
+    saidaAtual.zeradas.splice(pos, 1);
     delete saidaAtual.descontos[indexReal];
-    let pos = saidaAtual.zeradas.indexOf(indexReal);
-    if (pos !== -1) saidaAtual.zeradas.splice(pos, 1);
-    renderizarBobinasSaida();
-    return;
-  }
-  let pesoAtualBob = bob.qtd;
-  if (saidaAtual.pesoRestante <= 0) return;
-  if (saidaAtual.pesoRestante >= pesoAtualBob) {
-    saidaAtual.descontos[indexReal] = pesoAtualBob;
-    saidaAtual.pesoRestante -= pesoAtualBob;
-    saidaAtual.zeradas.push(indexReal);
   } else {
-    saidaAtual.descontos[indexReal] = saidaAtual.pesoRestante;
-    saidaAtual.pesoRestante = 0;
+    // Selecionar (bobina inteira)
+    saidaAtual.descontos[indexReal] = bob.qtd;
+    saidaAtual.zeradas.push(indexReal);
   }
+
   renderizarBobinasSaida();
 }
 
 function confirmarSaida() {
-  let totalDescontado = Object.values(saidaAtual.descontos).reduce((a, b) => a+b, 0);
-  if (totalDescontado <= 0) { mostrarToast('Selecione pelo menos uma bobina', 'erro'); return; }
-  if (saidaAtual.pesoRestante > 0) { mostrarToast('Ainda restam ' + Math.round(saidaAtual.pesoRestante) + ' kg para descontar', 'erro'); return; }
-  if (saidaAtual.zeradas.length > 0) processarZeradas(0);
-  else finalizarSaida();
+  if (saidaAtual.zeradas.length === 0) {
+    mostrarToast('Selecione pelo menos uma bobina', 'erro');
+    return;
+  }
+
+  let totalSelecionado = saidaAtual.zeradas.reduce((acc, idx) => acc + (historico[idx] ? historico[idx].qtd : 0), 0);
+
+  if (totalSelecionado < saidaAtual.pesoTotal) {
+    if (!confirm('Peso selecionado (' + Math.round(totalSelecionado) + ' kg) é menor que o pedido (' + Math.round(saidaAtual.pesoTotal) + ' kg).\n\nConfirmar mesmo assim?')) return;
+  }
+
+  processarZeradas(0);
 }
 
 function processarZeradas(indice) {
@@ -2029,81 +2466,88 @@ function zerouExcluir() {
 
 function finalizarSaida() {
   salvarEstadoParaDesfazer();
-  let totalDescontado = Object.values(saidaAtual.descontos).reduce((a, b) => a+b, 0);
+
   let bobsConsumidas = saidaAtual.zeradas.filter(idx => historico[idx] && historico[idx]._consumir);
   let bobsExcluidas = saidaAtual.zeradas.filter(idx => historico[idx] && historico[idx]._excluir);
-  let pesoDescontadoParcial = 0;
-  Object.keys(saidaAtual.descontos).forEach(idx => {
-    let indexReal = parseInt(idx);
-    if (!saidaAtual.zeradas.includes(indexReal)) pesoDescontadoParcial += saidaAtual.descontos[indexReal];
-  });
+
   let partesMsg = saidaAtual.identificador.split(" - V");
   let itemNome = partesMsg[0], versaoNome = partesMsg[1];
   let mensagemFinal = "";
-  bobsConsumidas.forEach(idx => { let bob = historico[idx]; if (bob) mensagemFinal += "Bobina consumida (" + itemNome + ", V" + versaoNome + ", " + Math.round(bob.qtd) + "kg)\n"; });
-  bobsExcluidas.forEach(idx => { let bob = historico[idx]; if (bob) mensagemFinal += "Bobina excluída (" + itemNome + ", V" + versaoNome + ", " + Math.round(bob.qtd) + "kg)\n"; });
-  if (pesoDescontadoParcial > 0) mensagemFinal += "Removido " + Math.round(pesoDescontadoParcial) + "kg (" + itemNome + ", V" + versaoNome + ")";
+  let totalSaiu = 0;
+
+  // Processar consumidas
+  bobsConsumidas.forEach(idx => {
+    let bob = historico[idx];
+    if (!bob) return;
+    bob.consumida = true;
+    totalSaiu += bob.qtd;
+    historico.push({
+      id: crypto.randomUUID(),
+      data: new Date().toLocaleString(),
+      tipo: 'Consumo',
+      item: saidaAtual.identificador,
+      qtd: bob.qtd,
+      refEntradaId: bob.id,
+      refEntradaData: bob.data
+    });
+    mensagemFinal += "Bobina consumida (" + itemNome + ", V" + versaoNome + ", " + Math.round(bob.qtd) + "kg)\n";
+    delete bob._consumir;
+  });
+
+  // Processar excluídas
+  bobsExcluidas.forEach(idx => {
+    let bob = historico[idx];
+    if (!bob) return;
+    bob._removidaEstoque = true;
+    totalSaiu += bob.qtd;
+    historico.push({
+      id: crypto.randomUUID(),
+      data: new Date().toLocaleString(),
+      tipo: 'Exclusão',
+      item: saidaAtual.identificador,
+      qtd: bob.qtd,
+      refEntradaId: bob.id,
+      refEntradaData: bob.data
+    });
+    mensagemFinal += "Bobina excluída (" + itemNome + ", V" + versaoNome + ", " + Math.round(bob.qtd) + "kg)\n";
+    delete bob._excluir;
+  });
+
+  // Atualizar estoque
   if (estoque[saidaAtual.identificador]) {
-    estoque[saidaAtual.identificador] -= totalDescontado;
+    estoque[saidaAtual.identificador] -= totalSaiu;
     let qtdKey = saidaAtual.identificador + '_qtd';
-    if (saidaAtual.zeradas.length > 0 && estoque[qtdKey]) {
+    if (estoque[qtdKey]) {
       estoque[qtdKey] -= saidaAtual.zeradas.length;
       if (estoque[qtdKey] < 0) estoque[qtdKey] = 0;
     }
     if (estoque[saidaAtual.identificador] <= 0) {
       delete estoque[saidaAtual.identificador];
-      delete estoque[qtdKey];
+      delete estoque[saidaAtual.identificador + '_qtd'];
     }
   }
-  Object.keys(saidaAtual.descontos).forEach(idx => {
-    let indexReal = parseInt(idx);
-    if (!saidaAtual.zeradas.includes(indexReal)) historico[indexReal].qtd -= saidaAtual.descontos[indexReal];
-  });
-  bobsConsumidas.forEach(idx => {
-    let bob = historico[idx];
-    if (bob) {
-      bob.consumida = true;
-      historico.push({ id: crypto.randomUUID(), data: new Date().toLocaleString(), tipo: 'Consumo', item: saidaAtual.identificador, qtd: bob.qtd, refEntradaId: bob.id, refEntradaData: bob.data });
-      delete bob._consumir;
-    }
-  });
-  if (pesoDescontadoParcial > 0) {
-    let pesoOriginalParcial = 0, refEntradaId = null, refEntradaData = null;
-    Object.keys(saidaAtual.descontos).forEach(idx => {
-      let indexReal = parseInt(idx);
-      if (!saidaAtual.zeradas.includes(indexReal)) {
-        pesoOriginalParcial = historico[indexReal].qtd + saidaAtual.descontos[indexReal];
-        refEntradaId = historico[indexReal].id || null;
-        refEntradaData = historico[indexReal].data || null;
-      }
-    });
-    historico.push({ id: crypto.randomUUID(), data: new Date().toLocaleString(), tipo: 'Consumo parcial', item: saidaAtual.identificador, qtd: pesoDescontadoParcial, qtdOriginal: pesoOriginalParcial, refEntradaId, refEntradaData });
-  }
-  bobsExcluidas.forEach(idx => {
-    let bob = historico[idx];
-    if (bob) {
-      bob._removidaEstoque = true;
-      historico.push({ id: crypto.randomUUID(), data: new Date().toLocaleString(), tipo: 'Exclusão', item: saidaAtual.identificador, qtd: bob.qtd, refEntradaId: bob.id, refEntradaData: bob.data });
-      delete bob._excluir;
-    }
-  });
+
+  // Limpar flags temporárias
   for (let i = historico.length - 1; i >= 0; i--) {
     if (!historico[i]) continue;
-    if (historico[i]._excluir) { historico.splice(i, 1); continue; }
+    if (historico[i]._excluir) delete historico[i]._excluir;
     if (historico[i]._consumir) delete historico[i]._consumir;
   }
+
   salvarDados();
   atualizarTabela();
   atualizarHistorico();
   document.getElementById('modalSaida').classList.add('hidden');
+
   tipoSelect.value = '';
   itemSelect.innerHTML = '<option value="">Selecionar item</option>';
   versaoSelect.innerHTML = '<option value="">Selecionar versão</option>';
   quantidade.value = '';
   document.getElementById('buscaItem').value = '';
-  if(saldoAtual) saldoAtual.innerHTML = "";
+  if (saldoAtual) saidaAtual.innerHTML = "";
+
   if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-  mostrarToast('Saída aplicada');
+  mostrarToast('Saída aplicada — ' + Math.round(totalSaiu) + ' kg');
   setTimeout(function() { if (mensagemFinal) alert(mensagemFinal); }, 150);
 }
 
@@ -2403,19 +2847,10 @@ function renderizarCadastro() {
         <span class="cad-btn-mini" title="Renomear" onclick="event.stopPropagation(); editarNomeItem('${tipo.chave}', '${itemNome}')">✏️</span>
         <span class="cad-btn-mini excluir" title="Excluir item" onclick="event.stopPropagation(); removerItem('${tipo.chave}', '${itemNome}')">🗑️</span>
       `;
-     
-itemHeader.onclick = function(e) {
-  if (e.target.classList.contains('cad-btn-mini')) return;
-
-  let abrindo = !divItem.classList.contains('aberto');
-  divItem.classList.toggle('aberto');
-
-  if (abrindo) {
-    setTimeout(() => {
-      divItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 100);
-  }
-};
+      itemHeader.onclick = function(e) {
+        if (e.target.classList.contains('cad-btn-mini')) return;
+        divItem.classList.toggle('aberto');
+      };
 
       let itemBody = document.createElement('div');
       itemBody.className = 'cad-item-body';
@@ -2602,17 +3037,23 @@ function gerarQRBobina(index) {
   }
 
   let idCurto = '';
-  if (reg.id && typeof reg.id === 'string' && reg.id.includes('-')) {
-    idCurto = reg.id.replace(/-/g, '').substring(0, 8);
+  if (reg.id && typeof reg.id === 'string') {
+    idCurto = reg.id.includes('-') ? reg.id.replace(/-/g, '').substring(0, 8) : reg.id.substring(0, 8);
   }
 
-  let conteudoQR = item + "/" + versao + "/" + Math.round(reg.qtd);
+  let conteudoQR = 'BOB/' + item + "/" + versao + "/" + Math.round(reg.qtd);
   if (dataQR) conteudoQR += "/" + dataQR;
   if (idCurto) conteudoQR += "/" + idCurto;
 
-  document.getElementById("qrContainer").innerHTML = "";
+  let container = document.getElementById("qrContainer");
+  container.innerHTML = "";
 
-  new QRCode(document.getElementById("qrContainer"), {
+    // QR Code
+  let qrWrapper = document.createElement("div");
+  qrWrapper.style.cssText = "display:flex; justify-content:center; padding:8px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0;";
+  container.appendChild(qrWrapper);
+
+  new QRCode(qrWrapper, {
     text: conteudoQR,
     width: 200,
     height: 200,
@@ -2621,17 +3062,108 @@ function gerarQRBobina(index) {
     correctLevel: QRCode.CorrectLevel.M
   });
 
+  // Informações — tudo numa linha + peso e data separados
+  let corTipo = tipo === 'brf' ? '#3b82f6' : tipo === 'tampas' ? '#16a34a' : tipo === 'laminacao' ? '#ea580c' : '#64748b';
+  let bgTipo = tipo === 'brf' ? '#dbeafe' : tipo === 'tampas' ? '#dcfce7' : tipo === 'laminacao' ? '#ffedd5' : '#f1f5f9';
+
   let infoDiv = document.createElement("div");
-  infoDiv.className = "qr-info";
+  infoDiv.style.cssText = "text-align:center; margin-top:14px; display:flex; flex-direction:column; gap:6px;";
   infoDiv.innerHTML = `
-    <div><strong>${item}</strong> — V${versao}</div>
-    <div>${tamanho}</div>
-    <div>${Math.round(reg.qtd)} kg</div>
-    <div style="font-size:11px; color:#94a3b8;">Produção: ${dataProducao || '-'}</div>
+    <div style="font-size:14px; font-weight:600; color:#1e293b;">
+      <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; padding:2px 6px; border-radius:4px; background:${bgTipo}; color:${corTipo}; margin-right:6px;">${nomeCompletoTipo(tipo)}</span>
+      ${item} · V${versao} · ${tamanho}
+    </div>
+    <div style="font-size:22px; font-weight:800; color:#1e3a8a;">${Math.round(reg.qtd)} kg</div>
+    <div style="font-size:11px; color:#94a3b8;">📅 ${dataProducao ? dataProducao.replace(' às ', ' - ') : 'Sem data'}</div>
   `;
-  document.getElementById("qrContainer").appendChild(infoDiv);
+  container.appendChild(infoDiv);
+
+  // Status — só mostra se consumida ou excluída
+  if (reg.consumida || reg._removidaEstoque) {
+    let statusDiv = document.createElement("div");
+    statusDiv.style.cssText = "text-align:center; margin-top:4px;";
+    if (reg.consumida) {
+      statusDiv.innerHTML = '<span style="font-size:12px; padding:3px 10px; border-radius:6px; background:#fefce8; color:#ca8a04; font-weight:600;">⚠️ Consumida</span>';
+    } else {
+      statusDiv.innerHTML = '<span style="font-size:12px; padding:3px 10px; border-radius:6px; background:#fef2f2; color:#dc2626; font-weight:600;">🚫 Excluída</span>';
+    }
+    container.appendChild(statusDiv);
+  }
+
+  // Botão salvar imagem
+  let salvarDiv = document.createElement("div");
+  salvarDiv.style.cssText = "text-align:center; margin-top:10px;";
+  salvarDiv.innerHTML = `<button onclick="salvarImagemQR('${item}', '${versao}', ${Math.round(reg.qtd)})" style="
+    background:#1e3a8a;
+    color:white;
+    border:none;
+    border-radius:8px;
+    padding:8px 16px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    width:100%;
+  ">📥 Salvar imagem</button>`;
+  container.appendChild(salvarDiv);
+
   document.getElementById("modalQR").classList.remove("hidden");
 }
+
+function salvarImagemQR(item, versao, peso) {
+  let qrWrapper = document.querySelector('#qrContainer > div:nth-child(2)');
+  if (!qrWrapper) { mostrarToast('Erro ao gerar imagem', 'erro'); return; }
+
+  let qrCanvas = qrWrapper.querySelector('canvas');
+  let qrImg = qrWrapper.querySelector('img');
+  let qrSrc = '';
+
+  if (qrCanvas) {
+    qrSrc = qrCanvas.toDataURL('image/png');
+  } else if (qrImg && qrImg.src) {
+    qrSrc = qrImg.src;
+  }
+
+  if (!qrSrc) { mostrarToast('QR não encontrado', 'erro'); return; }
+
+  let canvas = document.createElement('canvas');
+  canvas.width = 400;
+  canvas.height = 340;
+  let ctx = canvas.getContext('2d');
+
+  // Fundo
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 400, 340);
+
+  let img = new Image();
+  img.onload = function() {
+    // QR centralizado
+    ctx.drawImage(img, 100, 16, 200, 200);
+
+    // Textos
+    ctx.fillStyle = '#1e293b';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 20px Arial';
+    ctx.fillText(item + ' — V' + versao, 200, 244);
+
+    ctx.font = 'bold 28px Arial';
+    ctx.fillStyle = '#1e3a8a';
+    ctx.fillText(peso + ' kg', 200, 278);
+
+    ctx.font = '12px Arial';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('Estoque Mobile', 200, 320);
+
+    // Download
+    let link = document.createElement('a');
+    link.download = (item + '_V' + versao + '_' + peso + 'kg.png').replace(/[^a-zA-Z0-9._-]/g, '_');
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    mostrarToast('Imagem salva');
+  };
+  img.src = qrSrc;
+}
+
+window.salvarImagemQR = salvarImagemQR;
 
 let historicoSelecionadoIndex = null;
 
@@ -2753,36 +3285,63 @@ async function processarLeituraQR(textoLido) {
 function interpretarQRSimplificado(texto) {
   if (!texto || !texto.includes("/")) return null;
   let partes = texto.split("/");
-if (partes[0] === 'BOB') partes.shift();
+  
+  // Remove prefixo BOB se existir
+  if (partes[0] === 'BOB') partes.shift();
+  
   if (partes.length < 3) return null;
+  
   let item = partes[0], versao = partes[1];
   let peso = parseFloat(partes[2]);
   if (!item || !versao || isNaN(peso) || peso <= 0) return null;
 
-  let dataFormatada = "", dataBruta = "";
+  let dataFormatada = "", dataBruta = "", bobinaId = null;
+
+  // Tenta identificar data e ID nas partes restantes
+  // Formato com data: item/versao/peso/DDMMAAAA/HHMMSS/ID
+  // Formato sem data: item/versao/peso/ID
+  
   if (partes.length >= 5) {
-    let d = partes[3], h = partes[4];
-    if (h.length === 4) h = h + "00";
-    if (d.length === 8 && h.length === 6) {
+    // Pode ter data + hora + ID
+    let possData = partes[3];
+    let possHora = partes[4];
+    
+    // Verifica se partes[3] parece uma data (8 dígitos numéricos)
+    if (/^\d{8}$/.test(possData) && /^\d{4,6}$/.test(possHora)) {
+      let d = possData;
+      let h = possHora;
+      if (h.length === 4) h = h + "00";
+      
       dataFormatada = d.substring(0,2) + "/" + d.substring(2,4) + "/" + d.substring(4,8) +
         ", " + h.substring(0,2) + ":" + h.substring(2,4) + ":" + h.substring(4,6);
       dataBruta = d + "/" + h;
+
+      // ID vem depois da hora
+      if (partes.length >= 6) {
+        let possId = partes[5];
+        if (possId && possId.length === 8 && /^[a-f0-9]+$/i.test(possId)) {
+          bobinaId = possId;
+        }
+      }
+    } else {
+      // Não tem data, partes[3] pode ser o ID direto
+      let possId = partes[3];
+      if (possId && possId.length === 8 && /^[a-f0-9]+$/i.test(possId)) {
+        bobinaId = possId;
+      }
+    }
+  } else if (partes.length === 4) {
+    // Pode ser data sem hora, ou ID
+    let quarta = partes[3];
+    if (quarta && quarta.length === 8 && /^[a-f0-9]+$/i.test(quarta)) {
+      bobinaId = quarta;
+    } else if (/^\d{8}$/.test(quarta)) {
+      dataBruta = quarta + "/000000";
     }
   }
 
-  let idUnico = texto;
-  if (partes.length >= 5 && partes[4].length === 4) {
-    idUnico = partes[0] + "/" + partes[1] + "/" + partes[2] + "/" + partes[3] + "/" + partes[4] + "00";
-  }
-
-  let bobinaId = null;
-  let ultimaParte = partes[partes.length - 1];
-  if (ultimaParte && ultimaParte.length === 8 && /^[a-f0-9]+$/i.test(ultimaParte)) {
-    bobinaId = ultimaParte;
-  }
-
   return {
-    id: idUnico,
+    id: texto,
     bobinaId: bobinaId,
     tipo: descobrirTipoPorItem(item),
     item, versao, peso,
@@ -3221,12 +3780,13 @@ function coletarBobinasParaQR(dataInicioP, dataFimP) {
       }
     }
     let idCurto = '';
-    if (h.id && typeof h.id === 'string' && h.id.includes('-')) {
-      idCurto = h.id.replace(/-/g, '').substring(0, 8);
-    }
-    let conteudoQR = item + "/" + versao + "/" + Math.round(h.qtd);
-    if (dataQR) conteudoQR += "/" + dataQR;
-    if (idCurto) conteudoQR += "/" + idCurto;
+if (h.id && typeof h.id === 'string') {
+  idCurto = h.id.includes('-') ? h.id.replace(/-/g, '').substring(0, 8) : h.id.substring(0, 8);
+}
+// Adicionamos o 'BOB/' no início
+let conteudoQR = 'BOB/' + item + "/" + versao + "/" + Math.round(h.qtd);
+if (dataQR) conteudoQR += "/" + dataQR;
+if (idCurto) conteudoQR += "/" + idCurto;
 
     let dataProducao = "";
     if (dataQR) {
@@ -3242,12 +3802,12 @@ function coletarBobinasParaQR(dataInicioP, dataFimP) {
     }
 
     bobinas.push({
-      index, id: conteudoQR, tipo, tipoNome: nomeCompletoTipo(tipo),
-      item, versao, tamanho, peso: Math.round(h.qtd),
-      data: h.data, dataProducao,
-      status: h.consumida ? "consumida" : "ativa",
-      qrData: conteudoQR
-    });
+  index, id: conteudoQR, tipo, tipoNome: nomeCompletoTipo(tipo),
+  item, versao, tamanho, medida: tamanho, peso: Math.round(h.qtd),
+  data: h.data, dataProducao,
+  status: h.consumida ? "consumida" : "ativa",
+  qrData: conteudoQR
+});
   });
   return bobinas;
 }
@@ -3390,13 +3950,17 @@ function montarZPLDeLista(lista, qtdPorEtiqueta) {
       
       // Coordenadas exatas relativas à célula baseadas no seu ZPL
       let qrX = cellX + 32;
-      let qrY = cellY + 18;
-      let textoY = cellY + 190;
+      let qrY = cellY + 10;
+let textoY = cellY + 165 + fontH;
 
       // Código de Barras BQN (QR Code)
       zpl += '^FO' + qrX + ',' + qrY + '^BQN,2,' + qrMag + '^FDLA,' + bob.qrData + '^FS\n';
-      // Texto Centralizado no final da célula
+      // Texto linha 1 - Item/Versão e Peso
       zpl += '^FO' + cellX + ',' + textoY + '^A0N,' + fontH + ',' + fontW + '^FB' + cellW + ',1,0,C^FD' + bob.desc + '^FS\n';
+// Texto linha 2 - Medida
+if (bob.medida) {
+  zpl += '^FO' + cellX + ',' + (textoY + 22) + '^A0N,16,16^FB' + cellW + ',1,0,C^FD' + bob.medida + '^FS\n';
+}
     }
     zpl += '^XZ\n\n';
   }
@@ -3407,7 +3971,7 @@ function exportarZPLZebra(dataInicioP, dataFimP, qtdPorEtiqueta) {
   if (!qtdPorEtiqueta) qtdPorEtiqueta = 8;
   let bobinas = coletarBobinasParaQR(dataInicioP, dataFimP);
   if (bobinas.length === 0) { mostrarToast("Nenhuma bobina encontrada no período", "erro"); return; }
-  let lista = bobinas.map(bob => ({ qrData: bob.qrData, desc: bob.item + "/" + bob.versao + " - " + bob.peso }));
+  let lista = bobinas.map(bob => ({ qrData: bob.qrData, desc: bob.item + "/" + bob.versao + " - " + bob.peso, medida: bob.medida || bob.tamanho || '' }));
   let zpl = montarZPLDeLista(lista, qtdPorEtiqueta);
   let blob = new Blob([zpl], { type: "application/octet-stream" });
   let link = document.createElement("a");
@@ -3429,7 +3993,7 @@ function exportarCSVZebraMult(dataInicioP, dataFimP, qtdPorEtiqueta = 8) {
     for (let j = 0; j < qtdPorEtiqueta; j++) {
       let bob = bobinas[i + j];
       if (bob) {
-        let desc = bob.item + "/" + bob.versao + " - " + bob.peso + "kg";
+        let desc = bob.item + "/" + bob.versao + " - " + bob.peso + "kg - " + (bob.medida || bob.tamanho || '');
         linhaDados.push('"' + bob.qrData.replace(/"/g, '""') + '"', '"' + desc.replace(/"/g, '""') + '"');
       } else {
         linhaDados.push('""', '""');
@@ -3667,7 +4231,7 @@ function desenharPreviewPagina(pagina) {
   let canvas = document.getElementById('previewCanvas');
   let ctx = canvas.getContext('2d');
 
-  // Dimensões atualizadas para 10x6 cm (799x480 pontos a 203 DPI)
+  // Dimensões exatas: 799x480 pontos (10x6 cm a 203 DPI)
   let W = 799, H = 480;
   canvas.width = W; canvas.height = H;
 
@@ -3679,13 +4243,13 @@ function desenharPreviewPagina(pagina) {
 
   let inicio = pagina * previewDados.qrPorEtiqueta;
 
-  // Grade fixa: 4 colunas x 2 linhas = 8 bobinas
+  // Grade fixa: 4 colunas x 2 linhas = 8 bobinas (idêntico ao ZPL)
   let cols = 4;
   let linhas = 2;
-  let cellW = 199; // exato como no ZPL
+  let cellW = 199;
   let cellH = 240;
 
-  // Linhas verticais (tracejadas no preview, sólidas no ZPL real)
+  // Linhas de grade (tracejadas no preview, sólidas no ZPL)
   ctx.setLineDash([6, 4]);
   ctx.strokeStyle = '#94a3b8';
   ctx.lineWidth = 1;
@@ -3693,17 +4257,16 @@ function desenharPreviewPagina(pagina) {
     let x = c * cellW;
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
   }
-
-  // Linha horizontal do meio
   for (let l = 1; l < linhas; l++) {
     let y = l * cellH;
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
   ctx.setLineDash([]);
 
-  // Tamanho do QR no preview (proporcional ao ZPL: mag=5)
-  let qrRealSize = (5 * 25) + (5 * 2); // = 135px
-  let fontH = 14; // tamanho de fonte no canvas do preview
+  // QR magnification 5 = 5×(4+2×4) = 5×12 = cada módulo 5px
+  // QR v2 (25 módulos) = 25×5 = 125px no ZPL
+  // Usamos o mesmo tamanho no preview
+  let qrSize = 125;
 
   let imagensParaDesenhar = [];
 
@@ -3716,33 +4279,43 @@ function desenharPreviewPagina(pagina) {
     let cellX = col * cellW;
     let cellY = lin * cellH;
 
-    // Mesmas coordenadas relativas do ZPL
+    // Coordenadas IDÊNTICAS ao ZPL: qrX = cellX+32, qrY = cellY+10
     let qrX = cellX + 32;
-    let qrY = cellY + 18;
-    let textoY = cellY + 190 + fontH; // +fontH pois fillText usa baseline
+    let qrY = cellY + 10;
 
-    // Texto da bobina
+    // Texto posição IDÊNTICA ao ZPL: textoY = cellY + 165 + fontH(20) = cellY+185
+    let textoY1 = cellY + 185;
+    let textoY2 = textoY1 + 22; // mesma distância do ZPL (textoY + 22)
+
+    // Texto linha 1 - Item/Versão e Peso (fonte 20px no ZPL → 20px no preview)
     let desc = bob.item + '/' + (bob.versao || '') + ' - ' + bob.peso;
     ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold ' + fontH + 'px Arial';
+    ctx.font = 'bold 20px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(desc, cellX + cellW / 2, textoY);
+    ctx.fillText(desc, cellX + cellW / 2, textoY1);
+
+    // Texto linha 2 - Medida (fonte 16px no ZPL → 16px no preview)
+    if (bob.medida || bob.tamanho) {
+      ctx.font = '16px Arial';
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(bob.medida || bob.tamanho || '', cellX + cellW / 2, textoY2);
+    }
 
     // QR Code
     if (bob._qrDataUrl) {
       imagensParaDesenhar.push({
         src: bob._qrDataUrl,
         x: qrX, y: qrY,
-        size: qrRealSize
+        size: qrSize
       });
     } else {
       ctx.strokeStyle = '#cbd5e1';
       ctx.lineWidth = 1;
-      ctx.strokeRect(qrX, qrY, qrRealSize, qrRealSize);
+      ctx.strokeRect(qrX, qrY, qrSize, qrSize);
       ctx.fillStyle = '#94a3b8';
       ctx.font = '12px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText('QR', qrX + qrRealSize / 2, qrY + qrRealSize / 2 + 4);
+      ctx.fillText('QR', qrX + qrSize / 2, qrY + qrSize / 2 + 4);
     }
   }
 
@@ -3788,22 +4361,43 @@ function confirmarExportZPL() {
     return;
   }
 
-  let veioDosPendentes = !document.getElementById('modalPendentes').classList.contains('hidden');
-
-  if (veioDosPendentes && etiquetasPendentes.length > 0) {
+  if (previewDados.origem === 'pendentes' && etiquetasPendentes.length > 0) {
     fecharPreviewEtiqueta();
-    let lista = etiquetasPendentes.map(p => ({
-      qrData: 'BOB/' + p.item + '/' + p.versao + '/' + Math.round(p.peso) + '/' + p.idCurto,
-      desc: p.item + '/' + p.versao + ' - ' + p.peso
-    }));
-    if (lista.length === 0) { mostrarToast('Nenhuma bobina para exportar', 'erro'); return; }
+
+    let lista = etiquetasPendentes.map(p => {
+      let dataQR = '';
+      let origemData = p.dataProducao || p.dataCriacao || '';
+
+      if (origemData) {
+        let partesData = origemData.split(", ");
+        if (partesData.length === 2) {
+          let dma = partesData[0].split("/");
+          let hms = partesData[1].replace(/:/g, "");
+          if (dma.length === 3 && hms.length >= 4) {
+            dataQR = "/" + dma[0] + dma[1] + dma[2] + "/" + hms;
+          }
+        }
+      }
+
+      return {
+        qrData: 'BOB/' + p.item + '/' + p.versao + '/' + Math.round(p.peso) + dataQR + '/' + p.idCurto,
+        desc: p.item + '/' + p.versao + ' - ' + p.peso,
+        medida: p.tamanho || ''
+      };
+    });
+
+    if (lista.length === 0) {
+      mostrarToast('Nenhuma bobina para exportar', 'erro');
+      return;
+    }
+
     let zpl = montarZPLDeLista(lista, previewDados.qrPorEtiqueta || 8);
     let blob = new Blob([zpl], { type: 'application/octet-stream' });
     let link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = 'Etiquetas_Pendentes_' + getTimestamp() + '.zpl';
     link.click();
-  mostrarToast('.zpl exportado');
+    mostrarToast('.zpl exportado');
     return;
   }
 
@@ -4292,7 +4886,8 @@ if (bob.dataProducao) {
 
 todas.push({ 
   qrData: 'BOB/' + bob.item + '/' + bob.versao + '/' + Math.round(bob.peso) + dataQR + '/' + idCurto, 
-  desc: bob.item + '/' + bob.versao + ' - ' + bob.peso 
+  desc: bob.item + '/' + bob.versao + ' - ' + bob.peso,
+  medida: bob.tamanho || ''
 });
     });
   });
@@ -4333,18 +4928,44 @@ function geradorCopiarFallback(texto) {
 
 function geradorVisualizarZPL() {
   let todas = [];
+
   geradorBobinas.forEach(bob => {
     bob.ids.forEach(id => {
       let idCurto = id.replace(/-/g, '').substring(0, 8);
-      todas.push({ qrData: bob.item + '/' + bob.versao + '/' + Math.round(bob.peso) + '/' + idCurto, item: bob.item, versao: bob.versao, peso: bob.peso });
+
+      let dataQR = '';
+      if (bob.dataProducao) {
+        let partesData = bob.dataProducao.split(", ");
+        if (partesData.length === 2) {
+          let dma = partesData[0].split("/");
+          let hms = partesData[1].replace(/:/g, "");
+          if (dma.length === 3 && hms.length >= 4) {
+            dataQR = "/" + dma[0] + dma[1] + dma[2] + "/" + hms;
+          }
+        }
+      }
+
+      todas.push({
+        qrData: 'BOB/' + bob.item + '/' + bob.versao + '/' + Math.round(bob.peso) + dataQR + '/' + idCurto,
+        item: bob.item,
+        versao: bob.versao,
+        peso: bob.peso,
+        medida: bob.tamanho || ''
+      });
     });
   });
-  if (todas.length === 0) { mostrarToast('Nenhuma etiqueta para visualizar', 'erro'); return; }
+
+  if (todas.length === 0) {
+    mostrarToast('Nenhuma etiqueta para visualizar', 'erro');
+    return;
+  }
+
   previewDados.bobinas = todas;
   previewDados.paginaAtual = 0;
   previewDados.totalPaginas = Math.ceil(todas.length / 8);
   previewDados.origem = 'gerador';
-  document.getElementById('previewInfo').textContent = '100 × 60 mm — ' + todas.length + ' bobina(s) em ' + previewDados.totalPaginas + ' etiqueta(s)';
+  document.getElementById('previewInfo').textContent =
+    '100 × 60 mm — ' + todas.length + ' bobina(s) em ' + previewDados.totalPaginas + ' etiqueta(s)';
   document.getElementById('modalPreviewEtiqueta').classList.remove('hidden');
   gerarPreviewsQR(function() { desenharPreviewPagina(0); });
 }
@@ -4381,10 +5002,15 @@ function adicionarPendentes(bobinas) {
   bobinas.forEach(bob => {
     bob.ids.forEach(id => {
       etiquetasPendentes.push({
-        id, idCurto: id.replace(/-/g, '').substring(0, 8),
-        tipo: bob.tipo, item: bob.item, versao: bob.versao,
-        tamanho: bob.tamanho, peso: bob.peso,
-        dataCriacao: new Date().toLocaleString()
+        id,
+        idCurto: id.replace(/-/g, '').substring(0, 8),
+        tipo: bob.tipo,
+        item: bob.item,
+        versao: bob.versao,
+        tamanho: bob.tamanho,
+        peso: bob.peso,
+        dataCriacao: new Date().toLocaleString(),
+        dataProducao: bob.dataProducao || null
       });
     });
   });
@@ -4528,20 +5154,12 @@ function renderizarPendentes() {
 }
 
 function pendentesMontarZPL() {
-  let lista = etiquetasPendentes.map(p => ({
-    qrData: 'BOB/' + p.item + '/' + p.versao + '/' + Math.round(p.peso) + '/' + p.idCurto,
-    desc: p.item + '/' + p.versao + ' - ' + p.peso
-  }));
-  return montarZPLDeLista(lista, 8);
-}
-
-function pendentesVisualizarZPL() {
-  if (etiquetasPendentes.length === 0) { mostrarToast('Nenhuma pendente', 'erro'); return; }
-  
-  let todas = etiquetasPendentes.map(p => {
+  let lista = etiquetasPendentes.map(p => {
     let dataQR = '';
-    if (p.dataProducao) {
-      let partesData = p.dataProducao.split(", ");
+    let origemData = p.dataProducao || p.dataCriacao || '';
+
+    if (origemData) {
+      let partesData = origemData.split(", ");
       if (partesData.length === 2) {
         let dma = partesData[0].split("/");
         let hms = partesData[1].replace(/:/g, "");
@@ -4550,11 +5168,44 @@ function pendentesVisualizarZPL() {
         }
       }
     }
+
     return {
-      qrData: p.item + '/' + p.versao + '/' + Math.round(p.peso) + dataQR + '/' + p.idCurto,
+      qrData: 'BOB/' + p.item + '/' + p.versao + '/' + Math.round(p.peso) + dataQR + '/' + p.idCurto,
+      desc: p.item + '/' + p.versao + ' - ' + p.peso,
+      medida: p.tamanho || ''
+    };
+  });
+
+  return montarZPLDeLista(lista, 8);
+}
+
+function pendentesVisualizarZPL() {
+  if (etiquetasPendentes.length === 0) {
+    mostrarToast('Nenhuma pendente', 'erro');
+    return;
+  }
+
+  let todas = etiquetasPendentes.map(p => {
+    let dataQR = '';
+    let origemData = p.dataProducao || p.dataCriacao || '';
+
+    if (origemData) {
+      let partesData = origemData.split(", ");
+      if (partesData.length === 2) {
+        let dma = partesData[0].split("/");
+        let hms = partesData[1].replace(/:/g, "");
+        if (dma.length === 3 && hms.length >= 4) {
+          dataQR = "/" + dma[0] + dma[1] + dma[2] + "/" + hms;
+        }
+      }
+    }
+
+    return {
+      qrData: 'BOB/' + p.item + '/' + p.versao + '/' + Math.round(p.peso) + dataQR + '/' + p.idCurto,
       item: p.item,
       versao: p.versao,
-      peso: p.peso
+      peso: p.peso,
+      medida: p.tamanho || ''
     };
   });
 
@@ -4562,7 +5213,8 @@ function pendentesVisualizarZPL() {
   previewDados.paginaAtual = 0;
   previewDados.totalPaginas = Math.ceil(todas.length / 8);
   previewDados.origem = 'pendentes';
-  document.getElementById('previewInfo').textContent = '100 × 60 mm — ' + todas.length + ' bobina(s) em ' + previewDados.totalPaginas + ' etiqueta(s)';
+  document.getElementById('previewInfo').textContent =
+    '100 × 60 mm — ' + todas.length + ' bobina(s) em ' + previewDados.totalPaginas + ' etiqueta(s)';
   document.getElementById('modalPreviewEtiqueta').classList.remove('hidden');
   gerarPreviewsQR(function() { desenharPreviewPagina(0); });
 }
@@ -4595,13 +5247,13 @@ function copiarZPLDoPreview() {
     zpl = geradorMontarZPL();
   }
   // Veio das pendentes
-  else if (!document.getElementById('modalPendentes').classList.contains('hidden') && etiquetasPendentes.length > 0) {
+  else if (previewDados.origem === 'pendentes' && etiquetasPendentes.length > 0) {
     zpl = pendentesMontarZPL();
   }
   // Veio do menu exportar
   else {
     let bobinas = coletarBobinasParaQR(previewDados.dataInicio, previewDados.dataFim);
-    let lista = bobinas.map(bob => ({ qrData: bob.qrData, desc: bob.item + '/' + bob.versao + ' - ' + bob.peso }));
+    let lista = bobinas.map(bob => ({ qrData: bob.qrData, desc: bob.item + '/' + bob.versao + ' - ' + bob.peso, medida: bob.medida || bob.tamanho || '' }));
     zpl = montarZPLDeLista(lista, previewDados.qrPorEtiqueta || 8);
   }
 
@@ -4710,6 +5362,621 @@ function obterDataProducaoParaEtiqueta() {
   return null;
 }
 
+/* ================= CONFERÊNCIA DE INVENTÁRIO ================= */
+
+let conferencia = {
+  ativa: false,
+  tipo: 'tudo',
+  dataInicio: null,
+  fotoEstoque: [],
+  conferidas: [],
+  extras: [],
+  scannerAberto: false,
+  leitor: null,
+  continuoMode: false
+};
+
+function abrirConferencia() {
+  fecharModalConfig();
+
+  let salva = localStorage.getItem('conferencia');
+  if (salva) {
+    try {
+      let dados = JSON.parse(salva);
+      if (dados.ativa) {
+        if (confirm('Existe uma conferência em andamento.\n\nContinuar?')) {
+          conferencia = dados;
+          mostrarTelaConf('confTelaAndamento');
+          confRenderizarLista();
+          document.getElementById('modalConferencia').classList.remove('hidden');
+          return;
+        } else {
+          localStorage.removeItem('conferencia');
+        }
+      }
+    } catch (e) {}
+  }
+
+  conferencia = {
+    ativa: false,
+    tipo: 'tudo',
+    dataInicio: null,
+    fotoEstoque: [],
+    conferidas: [],
+    extras: [],
+    scannerAberto: false,
+    leitor: null,
+    continuoMode: false
+  };
+
+  mostrarTelaConf('confTelaIniciar');
+  document.getElementById('modalConferencia').classList.remove('hidden');
+}
+
+function fecharConferencia() {
+  document.getElementById('modalConferencia').classList.add('hidden');
+  if (conferencia.leitor) {
+    try { conferencia.leitor.stop(); conferencia.leitor.clear(); } catch (e) {}
+    conferencia.leitor = null;
+  }
+}
+
+function mostrarTelaConf(telaId) {
+  ['confTelaIniciar', 'confTelaAndamento', 'confTelaResultado'].forEach(id => {
+    let el = document.getElementById(id);
+    if (el) {
+      el.classList.add('hidden');
+      el.style.display = 'none';
+    }
+  });
+  let tela = document.getElementById(telaId);
+  if (tela) {
+    tela.classList.remove('hidden');
+    tela.style.display = 'flex';
+    tela.style.flexDirection = 'column';
+    tela.style.flex = '1';
+    tela.style.minHeight = '0';
+  }
+}
+
+function iniciarConferencia() {
+  let tipoSelecionado = document.querySelector('input[name="confTipo"]:checked').value;
+
+  let foto = [];
+  historico.forEach(h => {
+    if (h.tipo !== 'Entrada' || h._removidaEstoque || h.consumida) return;
+    let partes = h.item.split(' - V');
+    if (partes.length < 2) return;
+    let item = partes[0], versao = partes[1];
+
+    let tipoItem = '';
+    Object.keys(banco).forEach(t => { if (banco[t] && banco[t][item]) tipoItem = t; });
+
+    if (tipoSelecionado !== 'tudo' && tipoItem !== tipoSelecionado) return;
+
+    if (!estoque[h.item] || estoque[h.item] <= 0) return;
+
+    let tamanho = '';
+    if (banco[tipoItem] && banco[tipoItem][item] && banco[tipoItem][item][versao]) {
+      tamanho = banco[tipoItem][item][versao].tamanho;
+    }
+
+    let idCurto = '';
+    if (h.id && typeof h.id === 'string' && h.id.includes('-')) {
+      idCurto = h.id.replace(/-/g, '').substring(0, 8);
+    }
+
+    foto.push({
+      id: h.id,
+      idCurto: idCurto,
+      item: item,
+      versao: versao,
+      identificador: h.item,
+      tipo: tipoItem,
+      peso: h.qtd,
+      tamanho: tamanho,
+      data: h.data
+    });
+  });
+
+  if (foto.length === 0) {
+    mostrarToast('Nenhuma bobina no estoque para conferir', 'erro');
+    return;
+  }
+
+  conferencia.ativa = true;
+  conferencia.tipo = tipoSelecionado;
+  conferencia.dataInicio = new Date().toLocaleString('pt-BR');
+  conferencia.fotoEstoque = foto;
+  conferencia.conferidas = [];
+  conferencia.extras = [];
+
+  confSalvar();
+  mostrarTelaConf('confTelaAndamento');
+  confRenderizarLista();
+  mostrarToast('Conferência iniciada — ' + foto.length + ' bobina(s)');
+}
+
+function confSalvar() {
+  let dados = {
+    ativa: conferencia.ativa,
+    tipo: conferencia.tipo,
+    dataInicio: conferencia.dataInicio,
+    fotoEstoque: conferencia.fotoEstoque,
+    conferidas: conferencia.conferidas,
+    extras: conferencia.extras
+  };
+  localStorage.setItem('conferencia', JSON.stringify(dados));
+}
+
+function pausarConferencia() {
+  confSalvar();
+  fecharConferencia();
+  mostrarToast('Conferência pausada');
+}
+
+function confRenderizarLista() {
+  let container = document.getElementById('confLista');
+  if (!container) return;
+
+  let termo = '';
+  let buscaEl = document.getElementById('confBusca');
+  if (buscaEl) termo = normalizarTexto(buscaEl.value);
+
+  let totalBobinas = conferencia.fotoEstoque.length;
+  let totalConferidas = conferencia.conferidas.length;
+  let percentual = totalBobinas > 0 ? Math.round((totalConferidas / totalBobinas) * 100) : 0;
+
+  let progEl = document.getElementById('confProgresso');
+  if (progEl) progEl.textContent = totalConferidas + '/' + totalBobinas + ' (' + percentual + '%)';
+
+  let barraEl = document.getElementById('confBarra');
+  if (barraEl) barraEl.style.width = percentual + '%';
+
+  let html = '';
+
+  // Extras
+  if (conferencia.extras.length > 0) {
+    html += '<div style="font-size:12px; font-weight:700; color:#ca8a04; padding:4px 0;">⚠️ Extras (' + conferencia.extras.length + ')</div>';
+    conferencia.extras.forEach((extra, idx) => {
+      let textoBusca = normalizarTexto(extra.item + ' ' + extra.versao + ' ' + extra.peso);
+      if (termo && !textoBusca.includes(termo)) return;
+      html += `
+        <div style="display:flex; align-items:center; padding:8px; background:#fefce8; border:1px solid #fde68a; border-radius:8px; gap:8px;">
+          <span style="font-size:16px;">⚠️</span>
+          <div style="flex:1;">
+            <div style="font-size:13px; font-weight:600;">${extra.item} — V${extra.versao}</div>
+            <div style="font-size:11px; color:#64748b;">${extra.peso} kg · ${extra.tamanho || ''}</div>
+          </div>
+          <button class="btn-clear" style="width:28px; height:28px; font-size:12px;" onclick="confRemoverExtra(${idx})">X</button>
+        </div>
+      `;
+    });
+  }
+
+  // Conferidas
+  let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
+  if (conferidas.length > 0) {
+    html += '<div style="font-size:12px; font-weight:700; color:#16a34a; padding:4px 0;">✅ Conferidas (' + conferidas.length + ')</div>';
+    conferidas.forEach(bob => {
+      let textoBusca = normalizarTexto(bob.item + ' ' + bob.versao + ' ' + bob.peso + ' ' + bob.tamanho);
+      if (termo && !textoBusca.includes(termo)) return;
+      html += `
+        <div style="display:flex; align-items:center; padding:8px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; gap:8px;">
+          <span style="font-size:16px;">✅</span>
+          <div style="flex:1;">
+            <div style="font-size:13px; font-weight:600;">${bob.item} — V${bob.versao}</div>
+            <div style="font-size:11px; color:#64748b;">${Math.round(bob.peso)} kg · ${bob.tamanho}</div>
+          </div>
+          <button style="background:#dc2626; color:white; border:none; border-radius:6px; width:28px; height:28px; font-size:12px; cursor:pointer;" onclick="confDesmarcar('${bob.id}')">↩</button>
+        </div>
+      `;
+    });
+  }
+
+  // Pendentes
+  let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
+  if (pendentes.length > 0) {
+    html += '<div style="font-size:12px; font-weight:700; color:#64748b; padding:4px 0;">⬜ Pendentes (' + pendentes.length + ')</div>';
+    pendentes.forEach(bob => {
+      let textoBusca = normalizarTexto(bob.item + ' ' + bob.versao + ' ' + bob.peso + ' ' + bob.tamanho);
+      if (termo && !textoBusca.includes(termo)) return;
+      html += `
+        <div style="display:flex; align-items:center; padding:8px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; gap:8px; cursor:pointer;" onclick="confMarcarManual('${bob.id}')">
+          <span style="font-size:16px;">⬜</span>
+          <div style="flex:1;">
+            <div style="font-size:13px; font-weight:600;">${bob.item} — V${bob.versao}</div>
+            <div style="font-size:11px; color:#64748b;">${Math.round(bob.peso)} kg · ${bob.tamanho}</div>
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  if (!html) html = '<div style="text-align:center; color:#94a3b8; padding:20px;">Nenhuma bobina encontrada</div>';
+  container.innerHTML = html;
+}
+
+function confFiltrarLista() {
+  confRenderizarLista();
+}
+
+function confMarcarManual(id) {
+  if (conferencia.conferidas.includes(id)) {
+    mostrarToast('Já conferida', 'erro');
+    return;
+  }
+  conferencia.conferidas.push(id);
+  confSalvar();
+  confRenderizarLista();
+  if (navigator.vibrate) navigator.vibrate([50]);
+}
+
+function confDesmarcar(id) {
+  conferencia.conferidas = conferencia.conferidas.filter(c => c !== id);
+  confSalvar();
+  confRenderizarLista();
+}
+
+function confRemoverExtra(idx) {
+  conferencia.extras.splice(idx, 1);
+  confSalvar();
+  confRenderizarLista();
+}
+
+function confProcessarLeitura(textoLido) {
+  let dados = null;
+  try { dados = JSON.parse(textoLido); }
+  catch (e) { dados = interpretarQRSimplificado(textoLido); }
+
+  if (!dados) {
+    mostrarToast('QR inválido', 'erro');
+    return 'erro';
+  }
+
+  // Procura na foto do estoque
+  let encontrada = null;
+  conferencia.fotoEstoque.forEach(bob => {
+    if (encontrada) return;
+
+    // 1º Tenta pelo ID Curto (etiquetas novas com BOB/)
+    if (dados.bobinaId && bob.idCurto === dados.bobinaId) { 
+      encontrada = bob; 
+      return; 
+    }
+
+    // 2º Tenta pela Data e Hora (etiquetas de hoje à tarde)
+    if (dados.dataBruta && bob.data) {
+      let dataNumBob = bob.data.replace(/[^0-9]/g, '');
+      let dataNumQR = dados.dataBruta.replace(/[^0-9]/g, '');
+      if (dataNumBob === dataNumQR && bob.item === dados.item && Math.round(bob.peso) === Math.round(dados.peso)) {
+        encontrada = bob;
+        return;
+      }
+    }
+
+    // 3º Fallback: só por Item + Versão + Peso (etiquetas antigas sem data e sem ID)
+    if (!dados.bobinaId && !dados.dataBruta && bob.item === dados.item && bob.versao === String(dados.versao) && Math.round(bob.peso) === Math.round(dados.peso)) {
+      encontrada = bob;
+    }
+  });
+
+  if (encontrada) {
+    if (conferencia.conferidas.includes(encontrada.id)) {
+      return 'duplicada';
+    }
+    conferencia.conferidas.push(encontrada.id);
+    confSalvar();
+    confRenderizarLista();
+    return 'conferida';
+  } else {
+    // Bobina extra
+    let tamanho = '';
+    let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
+    if (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)]) {
+      tamanho = banco[tipo][dados.item][String(dados.versao)].tamanho;
+    }
+
+    conferencia.extras.push({
+      item: dados.item,
+      versao: String(dados.versao),
+      peso: dados.peso,
+      tamanho: tamanho,
+      tipo: tipo
+    });
+    confSalvar();
+    confRenderizarLista();
+    return 'extra';
+  }
+}
+
+// Scanner QR único
+async function confScannerQR() {
+  conferencia.continuoMode = false;
+  document.getElementById('confScannerTitulo').textContent = 'Escanear para conferência';
+  document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
+  document.getElementById('confScannerLog').innerHTML = '';
+  document.getElementById('readerConf').innerHTML = '';
+  document.getElementById('modalScannerConf').classList.remove('hidden');
+
+  try {
+    conferencia.leitor = new Html5Qrcode('readerConf');
+    await conferencia.leitor.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 220, height: 220 } },
+      async (decodedText) => {
+        let resultado = confProcessarLeitura(decodedText);
+        confLogScanner(resultado, decodedText);
+        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
+
+        if (!conferencia.continuoMode) {
+          await confFecharScanner();
+        }
+      },
+      () => {}
+    );
+  } catch (e) {
+    console.error('Erro scanner conferência:', e);
+    mostrarToast('Não foi possível abrir a câmera', 'erro');
+    confFecharScanner();
+  }
+}
+
+// Scanner contínuo
+async function confScannerContinuo() {
+  conferencia.continuoMode = true;
+  document.getElementById('confScannerTitulo').textContent = 'Leitura contínua — Conferência';
+  document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
+  document.getElementById('confScannerLog').innerHTML = '';
+  document.getElementById('readerConf').innerHTML = '';
+  document.getElementById('modalScannerConf').classList.remove('hidden');
+
+  let processando = false;
+  let ultimoLido = '';
+
+  try {
+    conferencia.leitor = new Html5Qrcode('readerConf');
+    await conferencia.leitor.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 220, height: 220 } },
+      async (decodedText) => {
+        if (processando || decodedText === ultimoLido) return;
+        processando = true;
+        ultimoLido = decodedText;
+
+        let resultado = confProcessarLeitura(decodedText);
+        confLogScanner(resultado, decodedText);
+        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
+
+        setTimeout(() => { processando = false; }, 1500);
+      },
+      () => {}
+    );
+  } catch (e) {
+    console.error('Erro scanner conferência:', e);
+    mostrarToast('Não foi possível abrir a câmera', 'erro');
+    confFecharScanner();
+  }
+}
+
+function confLogScanner(resultado, texto) {
+  let log = document.getElementById('confScannerLog');
+  let agora = new Date().toLocaleTimeString();
+  let div = document.createElement('div');
+  div.style.padding = '3px 0';
+  div.style.borderBottom = '1px solid #f1f5f9';
+
+  let dados = null;
+  try { dados = JSON.parse(texto); } catch (e) { dados = interpretarQRSimplificado(texto); }
+  let nome = dados ? (dados.item + ' V' + dados.versao) : texto.substring(0, 20);
+
+  if (resultado === 'conferida') {
+    div.style.color = '#16a34a';
+    div.textContent = '✅ ' + agora + ' — ' + nome + ' conferida';
+    if (navigator.vibrate) navigator.vibrate([100]);
+  } else if (resultado === 'duplicada') {
+    div.style.color = '#ca8a04';
+    div.textContent = '⏭️ ' + agora + ' — ' + nome + ' já conferida';
+    if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+  } else if (resultado === 'extra') {
+    div.style.color = '#ca8a04';
+    div.textContent = '⚠️ ' + agora + ' — ' + nome + ' extra (não no estoque)';
+    if (navigator.vibrate) navigator.vibrate([200]);
+  } else {
+    div.style.color = '#dc2626';
+    div.textContent = '❌ ' + agora + ' — QR inválido';
+    if (navigator.vibrate) navigator.vibrate([200]);
+  }
+
+  if (log.firstChild) log.insertBefore(div, log.firstChild);
+  else log.appendChild(div);
+}
+
+async function confFecharScanner() {
+  try {
+    if (conferencia.leitor) {
+      await conferencia.leitor.stop();
+      await conferencia.leitor.clear();
+    }
+  } catch (e) {}
+  conferencia.leitor = null;
+  document.getElementById('modalScannerConf').classList.add('hidden');
+  document.getElementById('readerConf').innerHTML = '';
+  confRenderizarLista();
+}
+
+function finalizarConferencia() {
+  let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
+  let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
+
+  if (conferidas.length === 0) {
+    mostrarToast('Nenhuma bobina foi conferida ainda', 'erro');
+    return;
+  }
+
+  if (pendentes.length > 0) {
+    if (!confirm('Ainda há ' + pendentes.length + ' bobina(s) não conferida(s).\n\nFinalizar mesmo assim?')) return;
+  }
+
+  conferencia.ativa = false;
+  confSalvar();
+
+  // Resultado
+  document.getElementById('confResConferidas').textContent = conferidas.length;
+  document.getElementById('confResNaoEncontradas').textContent = pendentes.length;
+  document.getElementById('confResExtras').textContent = conferencia.extras.length;
+
+  let html = '';
+
+  if (conferidas.length > 0) {
+    html += '<div style="font-size:12px; font-weight:700; color:#16a34a; padding:4px 0;">✅ Conferidas (' + conferidas.length + ')</div>';
+    conferidas.forEach(bob => {
+      html += `
+        <div style="padding:6px 8px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; font-size:12px;">
+          ✅ ${bob.item} — V${bob.versao} · ${Math.round(bob.peso)} kg · ${bob.tamanho}
+        </div>
+      `;
+    });
+  }
+
+  if (pendentes.length > 0) {
+    html += '<div style="font-size:12px; font-weight:700; color:#dc2626; padding:4px 0;">❌ Não encontradas (' + pendentes.length + ')</div>';
+    pendentes.forEach(bob => {
+      html += `
+        <div style="padding:6px 8px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:12px;">
+          ❌ ${bob.item} — V${bob.versao} · ${Math.round(bob.peso)} kg · ${bob.tamanho}
+        </div>
+      `;
+    });
+  }
+
+  if (conferencia.extras.length > 0) {
+    html += '<div style="font-size:12px; font-weight:700; color:#ca8a04; padding:4px 0;">⚠️ Extras (' + conferencia.extras.length + ')</div>';
+    conferencia.extras.forEach(extra => {
+      html += `
+        <div style="padding:6px 8px; background:#fefce8; border:1px solid #fde68a; border-radius:6px; font-size:12px;">
+          ⚠️ ${extra.item} — V${extra.versao} · ${Math.round(extra.peso)} kg · ${extra.tamanho || ''}
+        </div>
+      `;
+    });
+  }
+
+  document.getElementById('confListaResultado').innerHTML = html;
+  mostrarTelaConf('confTelaResultado');
+}
+
+function confAjustarEstoque() {
+  let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
+
+  if (pendentes.length === 0 && conferencia.extras.length === 0) {
+    mostrarToast('Nada para ajustar', 'erro');
+    return;
+  }
+
+  let msg = '🔧 Ajustar estoque:\n\n';
+  if (pendentes.length > 0) msg += '❌ Remover ' + pendentes.length + ' bobina(s) não encontrada(s)\n';
+  if (conferencia.extras.length > 0) msg += '⚠️ Adicionar ' + conferencia.extras.length + ' bobina(s) extra(s)\n';
+  msg += '\nDeseja continuar?';
+
+  if (!confirm(msg)) return;
+
+  salvarEstadoParaDesfazer();
+
+  // Remover não encontradas
+  pendentes.forEach(bob => {
+    let reg = historico.find(h => h.id === bob.id);
+    if (reg) {
+      reg._removidaEstoque = true;
+      historico.push({
+        id: crypto.randomUUID(),
+        data: new Date().toLocaleString(),
+        tipo: 'Exclusão',
+        item: bob.identificador,
+        qtd: bob.peso,
+        refEntradaId: bob.id,
+        refEntradaData: bob.data
+      });
+
+      if (estoque[bob.identificador]) {
+        estoque[bob.identificador] -= bob.peso;
+        if (estoque[bob.identificador + '_qtd'] > 0) estoque[bob.identificador + '_qtd']--;
+        if (estoque[bob.identificador] <= 0) {
+          delete estoque[bob.identificador];
+          delete estoque[bob.identificador + '_qtd'];
+        }
+      }
+    }
+  });
+
+  // Adicionar extras
+  conferencia.extras.forEach(extra => {
+    let identificador = extra.item + ' - V' + extra.versao;
+    estoque[identificador] = (estoque[identificador] || 0) + extra.peso;
+    estoque[identificador + '_qtd'] = (estoque[identificador + '_qtd'] || 0) + 1;
+
+    historico.push({
+      id: crypto.randomUUID(),
+      data: new Date().toLocaleString(),
+      tipo: 'Entrada',
+      item: identificador,
+      qtd: extra.peso
+    });
+  });
+
+  salvarDados();
+  atualizarTudo();
+  localStorage.removeItem('conferencia');
+  fecharConferencia();
+
+  if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+  mostrarToast('Estoque ajustado pela conferência');
+}
+
+function confExportarResultado() {
+  let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
+  let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
+
+  const wb = XLSX.utils.book_new();
+  let linhas = [];
+
+  linhas.push(['CONFERÊNCIA DE INVENTÁRIO', '', '', '', '']);
+  linhas.push(['Data início:', conferencia.dataInicio, '', '', '']);
+  linhas.push(['Data fim:', new Date().toLocaleString('pt-BR'), '', '', '']);
+  linhas.push(['Tipo:', conferencia.tipo === 'tudo' ? 'Todos' : nomeCompletoTipo(conferencia.tipo), '', '', '']);
+  linhas.push(['', '', '', '', '']);
+  linhas.push(['RESUMO', '', '', '', '']);
+  linhas.push(['Conferidas:', conferidas.length, '', '', '']);
+  linhas.push(['Não encontradas:', pendentes.length, '', '', '']);
+  linhas.push(['Extras:', conferencia.extras.length, '', '', '']);
+  linhas.push(['', '', '', '', '']);
+
+  if (conferidas.length > 0) {
+    linhas.push(['CONFERIDAS', '', '', '', '']);
+    linhas.push(['Item', 'Versão', 'Medidas', 'Kg', 'Status']);
+    conferidas.forEach(b => linhas.push([b.item, b.versao, b.tamanho, Math.round(b.peso), 'Conferida']));
+    linhas.push(['', '', '', '', '']);
+  }
+
+  if (pendentes.length > 0) {
+    linhas.push(['NÃO ENCONTRADAS', '', '', '', '']);
+    linhas.push(['Item', 'Versão', 'Medidas', 'Kg', 'Status']);
+    pendentes.forEach(b => linhas.push([b.item, b.versao, b.tamanho, Math.round(b.peso), 'Não encontrada']));
+    linhas.push(['', '', '', '', '']);
+  }
+
+  if (conferencia.extras.length > 0) {
+    linhas.push(['EXTRAS', '', '', '', '']);
+    linhas.push(['Item', 'Versão', 'Medidas', 'Kg', 'Status']);
+    conferencia.extras.forEach(b => linhas.push([b.item, b.versao, b.tamanho || '', Math.round(b.peso), 'Extra']));
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(linhas);
+  ws['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'Conferência');
+  XLSX.writeFile(wb, 'Conferencia_' + getTimestamp() + '.xlsx');
+  mostrarToast('Relatório exportado');
+}
+
 /* ================= EXPOSIÇÃO GLOBAL ================= */
 
 window.fecharGerador = fecharGerador;
@@ -4785,3 +6052,17 @@ window.geradorLimparEFechar = geradorLimparEFechar;
 window.abrirConfigDataProducao = abrirConfigDataProducao;
 window.fecharConfigDataProducao = fecharConfigDataProducao;
 window.salvarOpcaoData = salvarOpcaoData;
+window.abrirConferencia = abrirConferencia;
+window.fecharConferencia = fecharConferencia;
+window.iniciarConferencia = iniciarConferencia;
+window.pausarConferencia = pausarConferencia;
+window.confMarcarManual = confMarcarManual;
+window.confDesmarcar = confDesmarcar;
+window.confRemoverExtra = confRemoverExtra;
+window.confFiltrarLista = confFiltrarLista;
+window.confScannerQR = confScannerQR;
+window.confScannerContinuo = confScannerContinuo;
+window.confFecharScanner = confFecharScanner;
+window.finalizarConferencia = finalizarConferencia;
+window.confAjustarEstoque = confAjustarEstoque;
+window.confExportarResultado = confExportarResultado;
