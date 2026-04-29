@@ -1942,34 +1942,74 @@ function recalcularSugestoes() {
   if (modoSugestao === 'idade') {
     let pesoAlvo = saidaAtual.pesoTotal;
     let bobinas = saidaAtual.bobinas;
-    let n = bobinas.length;
 
-    // Sugestão 1: FIFO puro (mais velhas até atingir o peso)
+    // 1. ORDENAÇÃO INFALÍVEL POR DATA (Mais velha primeiro)
+    let indicesOrdenados = bobinas.map((bob, idx) => {
+      // Pega a data da bobina (dataProducao se existir, senão a data de entrada)
+      let dataString = bob.dataProducao || bob.data;
+      let timestampOrdenacao = "99999999999999"; // Fallback caso não tenha data (vai pro final)
+
+      if (dataString) {
+        // Ex: "22/04/2026, 11:28:49" -> ["22/04/2026", "11:28:49"]
+        let partes = dataString.split(", ");
+        
+        if (partes.length > 0) {
+          let dma = partes[0].split("/"); // ["22", "04", "2026"]
+          if (dma.length === 3) {
+            let ano = dma[2];
+            let mes = dma[1].padStart(2, '0');
+            let dia = dma[0].padStart(2, '0');
+            
+            let hora = "000000";
+            if (partes[1]) {
+              // "11:28:49" -> "112849"
+              hora = partes[1].replace(/:/g, "").padEnd(6, '0');
+            }
+            
+            // Ex: 20260422112849
+            timestampOrdenacao = ano + mes + dia + hora;
+          }
+        }
+      }
+      return { idx: idx, ts: timestampOrdenacao };
+    });
+
+    // Ordena do menor (mais antigo) para o maior (mais novo)
+    indicesOrdenados.sort((a, b) => a.ts.localeCompare(b.ts));
+
+    // Agora temos a lista de índices das bobinas na ordem cronológica correta
+    let ordemIdade = indicesOrdenados.map(o => o.idx);
+
+    // 2. MONTA AS SUGESTÕES
+    // Sugestão 1: FIFO puro (pega as mais velhas até atingir ou passar o peso)
     let combo1 = [];
     let soma1 = 0;
-    for (let i = 0; i < n; i++) {
-      combo1.push(i);
-      soma1 += bobinas[i].qtd;
+    for (let i = 0; i < ordemIdade.length; i++) {
+      combo1.push(ordemIdade[i]);
+      soma1 += bobinas[ordemIdade[i]].qtd;
       if (soma1 >= pesoAlvo) break;
     }
 
-    // Sugestão 2: FIFO com uma a menos
+    // Sugestão 2: FIFO com uma a menos (mostra o que acontece se não pegar a última)
     let combo2 = combo1.length > 1 ? combo1.slice(0, -1) : [];
 
-    // Sugestão 3: FIFO puro + próxima mais velha disponível
+    // Sugestão 3: FIFO puro + próxima mais velha (se houver)
     let combo3 = [...combo1];
-    if (combo3.length < n) {
-      combo3.push(combo3.length);
+    let usados = new Set(combo3);
+    for (let i = 0; i < ordemIdade.length; i++) {
+      if (!usados.has(ordemIdade[i])) {
+        combo3.push(ordemIdade[i]);
+        break;
+      }
     }
 
-    // Monta lista com diferenças
+    // 3. CALCULA DIFERENÇAS E ORDENA AS MELHORES
     let candidatas = [
       { indices: combo1, soma: combo1.reduce((a, i) => a + bobinas[i].qtd, 0) },
       { indices: combo2, soma: combo2.reduce((a, i) => a + bobinas[i].qtd, 0) },
       { indices: combo3, soma: combo3.reduce((a, i) => a + bobinas[i].qtd, 0) }
     ];
 
-    // Adiciona diferença absoluta
     candidatas.forEach(c => { c.diffAbs = Math.abs(c.soma - pesoAlvo); });
 
     // Remove vazias e duplicadas
@@ -1978,6 +2018,7 @@ function recalcularSugestoes() {
 
     candidatas.forEach(c => {
       if (c.indices.length === 0) return;
+      // Cria uma chave única baseada no peso total e quantidade de bobinas
       let ch = Math.round(c.soma) + '|' + c.indices.length;
       if (!chaves.has(ch)) {
         chaves.add(ch);
@@ -1985,19 +2026,21 @@ function recalcularSugestoes() {
       }
     });
 
-    // Ordena pela mais próxima de zero
+    // Ordena pela mais próxima do zero (mesmo respeitando a regra de idade)
     combos.sort((a, b) => {
       if (a.diffAbs !== b.diffAbs) return a.diffAbs - b.diffAbs;
       return a.indices.length - b.indices.length;
     });
 
+    // Pega só os índices
     saidaAtual.combinacoes = combos.slice(0, 3).map(c => c.indices);
 
   } else {
+    // MODO PESO (Lógica inalterada)
     saidaAtual.combinacoes = encontrarTodasCombinacoes(saidaAtual.bobinas, saidaAtual.pesoTotal);
   }
 
-  // Aplica a primeira combinação e renderiza
+  // 4. APLICA A PRIMEIRA COMBINAÇÃO E RENDERIZA A TELA
   saidaAtual.comboAtual = 0;
   saidaAtual.descontos = {};
   saidaAtual.zeradas = [];
@@ -2378,10 +2421,21 @@ function renderizarBobinasSaida() {
     `;
   }
 
+      let totalBobinas = saidaAtual.bobinas.length;
+  let selecionadas = saidaAtual.zeradas.length;
+
   let labelModo = modoSugestao === 'peso' ? 'Sugestões por peso:' : 'Sugestões por idade:';
-  let labelSugestao = saidaAtual.combinacoes.length > 1
-    ? `<div style="font-size:11px; color:#94a3b8; font-weight:500;">${labelModo}</div>`
-    : '';
+
+  let labelSugestao = `
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+      <span style="font-size:11px; color:#94a3b8; font-weight:500;">
+        ${saidaAtual.combinacoes.length > 1 ? labelModo : ''}
+      </span>
+      <span style="font-size:12px; font-weight:600; color:${selecionadas > 0 ? '#1e3a8a' : '#94a3b8'};">
+        ${selecionadas} / ${totalBobinas} bobinas
+      </span>
+    </div>
+  `;
 
   containerStatus.innerHTML = `
     ${labelSugestao}
@@ -2410,24 +2464,41 @@ function renderizarBobinasSaida() {
       </div>
     </div>
   `;
+
+  // Botão desmarcar no cabeçalho da tabela
+  let thDesmarcar = document.getElementById('thDesmarcar');
+  if (thDesmarcar) {
+    if (selecionadas > 0) {
+      thDesmarcar.innerHTML = `<input type="radio" checked onclick="desmarcarTodasBobinas()" style="width:18px;height:18px;margin:0;cursor:pointer;" title="Desmarcar todas">`;
+    } else {
+      thDesmarcar.innerHTML = '';
+    }
+  }
 }
+
 function selecionarBobinaSaida(indexReal) {
   let bob = historico[indexReal];
   if (!bob) return;
 
   let pos = saidaAtual.zeradas.indexOf(indexReal);
   if (pos !== -1) {
-    // Desselecionar
     saidaAtual.zeradas.splice(pos, 1);
     delete saidaAtual.descontos[indexReal];
   } else {
-    // Selecionar (bobina inteira)
     saidaAtual.descontos[indexReal] = bob.qtd;
     saidaAtual.zeradas.push(indexReal);
   }
 
   renderizarBobinasSaida();
 }
+
+function desmarcarTodasBobinas() {
+  saidaAtual.descontos = {};
+  saidaAtual.zeradas = [];
+  renderizarBobinasSaida();
+}
+
+window.desmarcarTodasBobinas = desmarcarTodasBobinas;
 
 function confirmarSaida() {
   if (saidaAtual.zeradas.length === 0) {
@@ -3271,6 +3342,7 @@ async function processarLeituraQR(textoLido) {
   let dados = null;
   try { dados = JSON.parse(textoLido); }
   catch (e) { dados = interpretarQRSimplificado(textoLido); }
+  alert("LIDO DO QR:\n" + textoLido + "\n\nOBJETO INTERPRETADO:\n" + JSON.stringify(dados, null, 2));
   if (!dados) {
     await fecharScannerQR();
     mostrarToast("QR inválido ou fora do padrão", "erro");
@@ -3297,46 +3369,39 @@ function interpretarQRSimplificado(texto) {
 
   let dataFormatada = "", dataBruta = "", bobinaId = null;
 
-  // Tenta identificar data e ID nas partes restantes
-  // Formato com data: item/versao/peso/DDMMAAAA/HHMMSS/ID
-  // Formato sem data: item/versao/peso/ID
-  
+  // 1. TENTA ACHAR O ID (Sempre a última parte do QR gerado pelo gerador)
+  let ultimaParte = partes[partes.length - 1];
+  if (ultimaParte && ultimaParte.length === 8 && /^[a-f0-9]+$/i.test(ultimaParte)) {
+    bobinaId = ultimaParte;
+  }
+
+  // 2. TRATA A DATA E HORA (Se existirem)
   if (partes.length >= 5) {
-    // Pode ter data + hora + ID
     let possData = partes[3];
-    let possHora = partes[4];
+    let possHora = partes[4]; // Pode ser a Hora ou o ID (se não tiver hora)
     
-    // Verifica se partes[3] parece uma data (8 dígitos numéricos)
-    if (/^\d{8}$/.test(possData) && /^\d{4,6}$/.test(possHora)) {
+    // Se a parte 3 for uma data válida (8 números seguidos, ex: 29042026)
+    if (/^\d{8}$/.test(possData)) {
       let d = possData;
-      let h = possHora;
-      if (h.length === 4) h = h + "00";
+      let h = "000000"; // Hora padrão caso não exista
+      
+      // Se a parte 4 for uma hora válida (só números, 4 a 6 dígitos)
+      if (possHora && /^\d{4,6}$/.test(possHora)) {
+        h = possHora.padEnd(6, '0'); // Garante que tenha 6 casas (HHMMSS)
+      }
       
       dataFormatada = d.substring(0,2) + "/" + d.substring(2,4) + "/" + d.substring(4,8) +
         ", " + h.substring(0,2) + ":" + h.substring(2,4) + ":" + h.substring(4,6);
       dataBruta = d + "/" + h;
-
-      // ID vem depois da hora
-      if (partes.length >= 6) {
-        let possId = partes[5];
-        if (possId && possId.length === 8 && /^[a-f0-9]+$/i.test(possId)) {
-          bobinaId = possId;
-        }
-      }
-    } else {
-      // Não tem data, partes[3] pode ser o ID direto
-      let possId = partes[3];
-      if (possId && possId.length === 8 && /^[a-f0-9]+$/i.test(possId)) {
-        bobinaId = possId;
-      }
     }
-  } else if (partes.length === 4) {
-    // Pode ser data sem hora, ou ID
+  }
+
+  // 3. FALLBACK (Para QRs antigos que só tinham 4 partes)
+  if (partes.length === 4 && !bobinaId) {
     let quarta = partes[3];
-    if (quarta && quarta.length === 8 && /^[a-f0-9]+$/i.test(quarta)) {
-      bobinaId = quarta;
-    } else if (/^\d{8}$/.test(quarta)) {
+    if (/^\d{8}$/.test(quarta)) {
       dataBruta = quarta + "/000000";
+      dataFormatada = quarta.substring(0,2) + "/" + quarta.substring(2,4) + "/" + quarta.substring(4,8) + ", 00:00:00";
     }
   }
 
@@ -3344,49 +3409,64 @@ function interpretarQRSimplificado(texto) {
     id: texto,
     bobinaId: bobinaId,
     tipo: descobrirTipoPorItem(item),
-    item, versao, peso,
+    item: item, 
+    versao: versao, 
+    peso: peso,
     data: dataFormatada,
     dataBruta: dataBruta
   };
 }
 
 function localizarRegistroPorQR(dados) {
+  // 1. SE O QR TEM ID: Busca estritamente pelo ID
+  if (dados.bobinaId) {
+    let encontradoPorId = historico.find(h => {
+      if (!h || h.tipo !== "Entrada") return false;
+      if (!h.id) return false;
+      
+      // Extrai o ID curto do histórico (serve para UUID e para o formato BOB/...)
+      let idCurtoHist = h.id.includes('/') 
+        ? h.id.split('/').pop() 
+        : h.id.replace(/-/g, '').substring(0, 8);
+        
+      return idCurtoHist === dados.bobinaId;
+    });
+    
+    // Se achou pelo ID, retorna a bobina. Se não achou, retorna nulo (bobina nova).
+    return encontradoPorId || null; 
+  }
+  
+  // 2. SE O QR NÃO TEM ID (Etiquetas antigas apenas com Data/Hora):
   let qrLido = dados.item + "/" + dados.versao + "/" + Math.round(parseFloat(dados.peso));
-  if (dados.data) {
-    let partesData = dados.data.split(", ");
-    if (partesData.length === 2) {
-      let dma = partesData[0].split("/");
-      let hms = partesData[1].replace(/:/g, "");
-      if (dma.length === 3 && hms.length === 6) {
-        qrLido += "/" + dma[0] + dma[1] + dma[2] + "/" + hms;
-      }
-    }
+  if (dados.dataBruta) {
+      let partesBruta = dados.dataBruta.split("/");
+      let dmaLido = partesBruta[0];
+      let hmsLido = partesBruta[1].padEnd(6, '0');
+      qrLido += "/" + dmaLido + "/" + hmsLido;
   }
 
   return historico.find(h => {
     if (!h || h.tipo !== "Entrada") return false;
-    if (!h.item || !h.item.includes(" - V")) return false;
-    if (dados.bobinaId && h.id && typeof h.id === 'string' && h.id.includes('-')) {
-      let idCurto = h.id.replace(/-/g, '').substring(0, 8);
-      if (idCurto === dados.bobinaId) return true;
-    }
+    
     let partes = h.item.split(" - V");
     let item = partes[0], versao = partes[1];
     let qrDoHistorico = item + "/" + versao + "/" + Math.round(h.qtd);
-    if (h.data) {
-      let partesDataH = h.data.split(", ");
-      if (partesDataH.length === 2) {
-        let dmaH = partesDataH[0].split("/");
-        let hmsH = partesDataH[1].replace(/:/g, "");
-        if (dmaH.length === 3 && hmsH.length === 6) {
+    
+    let dataParaComparar = h.dataProducao || h.data;
+    if (dataParaComparar) {
+      let partesH = dataParaComparar.split(", ");
+      if (partesH.length === 2) {
+        let dmaH = partesH[0].split("/");
+        let hmsH = partesH[1].replace(/:/g, "").padEnd(6, '0');
+        if (dmaH.length === 3) {
           qrDoHistorico += "/" + dmaH[0] + dmaH[1] + dmaH[2] + "/" + hmsH;
         }
       }
     }
+    
     if (qrLido === qrDoHistorico) return true;
-    let idHist = String(h.id || "");
-    let idDados = String(dados.id || "");
-    if (idDados && idHist === idDados) return true;
+    if (dados.id && h.id === dados.id) return true;
+    
     return false;
   }) || null;
 }
