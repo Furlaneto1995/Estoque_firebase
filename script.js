@@ -3307,10 +3307,18 @@ async function abrirScannerQR() {
     await leitorQR.start(
       { facingMode: "environment" },
       { fps: 10, qrbox: { width: 220, height: 220 } },
-      async (decodedText) => {
-        if (scannerProcessando) return;
-        scannerProcessando = true;
-        await processarLeituraQR(decodedText);
+       async (decodedText) => {
+        if (processando) return;
+        processando = true;
+
+        if (decodedText === ultimoLido) {
+          confLogScanner('duplicada', decodedText);
+          document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
+          setTimeout(() => { processando = false; }, 1500);
+          return;
+        }
+
+        ultimoLido = decodedText;
       },
       () => {}
     );
@@ -3342,7 +3350,6 @@ async function processarLeituraQR(textoLido) {
   let dados = null;
   try { dados = JSON.parse(textoLido); }
   catch (e) { dados = interpretarQRSimplificado(textoLido); }
-  alert("LIDO DO QR:\n" + textoLido + "\n\nOBJETO INTERPRETADO:\n" + JSON.stringify(dados, null, 2));
   if (!dados) {
     await fecharScannerQR();
     mostrarToast("QR inválido ou fora do padrão", "erro");
@@ -3694,6 +3701,9 @@ let continuoContagem = 0;
 let continuoIdsLidos = [];
 
 async function abrirScannerContinuo() {
+  // Fecha qualquer scanner que esteja aberto
+  await fecharTodosScanners();
+
   continuoContagem = 0;
   continuoIdsLidos = [];
   continuoProcessando = false;
@@ -3701,10 +3711,9 @@ async function abrirScannerContinuo() {
   document.getElementById("continuoContador").textContent = "0 bobinas adicionadas";
   document.getElementById("continuoLog").innerHTML = "";
   document.getElementById("readerContinuo").innerHTML = "";
+
   try {
     leitorContinuo = new Html5Qrcode("readerContinuo");
-    const cameras = await Html5Qrcode.getCameras();
-    if (!cameras || cameras.length === 0) { mostrarToast("Nenhuma câmera encontrada", "erro"); fecharScannerContinuo(); return; }
     await leitorContinuo.start(
       { facingMode: "environment" },
       { fps: 10, qrbox: { width: 220, height: 220 } },
@@ -3716,6 +3725,7 @@ async function abrirScannerContinuo() {
         } catch (erro) {
           console.error("Erro no scanner contínuo:", erro);
           adicionarLogContinuo("❌ " + new Date().toLocaleTimeString() + " — erro ao processar leitura", "erro");
+          flashScanner('erro');
           if (navigator.vibrate) navigator.vibrate([200]);
         } finally {
           setTimeout(() => { continuoProcessando = false; }, 1500);
@@ -3725,25 +3735,11 @@ async function abrirScannerContinuo() {
     );
     leitorContinuoAberto = true;
   } catch (erro) {
-    console.error(erro);
+    console.error("Erro ao abrir scanner contínuo:", erro);
     mostrarToast("Não foi possível abrir a câmera", "erro");
-    fecharScannerContinuo();
+    document.getElementById("modalScannerContinuo").classList.add("hidden");
+    document.getElementById("readerContinuo").innerHTML = "";
   }
-}
-
-async function fecharScannerContinuo() {
-  try {
-    if (leitorContinuo && leitorContinuoAberto) {
-      await leitorContinuo.stop();
-      await leitorContinuo.clear();
-    }
-  } catch (e) { console.warn("Erro ao fechar scanner contínuo:", e); }
-  leitorContinuo = null;
-  leitorContinuoAberto = false;
-  continuoProcessando = false;
-  document.getElementById("modalScannerContinuo").classList.add("hidden");
-  document.getElementById("readerContinuo").innerHTML = "";
-  if (continuoContagem > 0) { atualizarTudo(); mostrarToast(continuoContagem + " bobina(s) adicionada(s)"); }
 }
 
 async function processarLeituraContinua(textoLido) {
@@ -6116,6 +6112,31 @@ window.abrirAcoesHistorico = abrirAcoesHistorico;
 window.fecharModalHistoricoAcoes = fecharModalHistoricoAcoes;
 window.abrirQRDoHistorico = abrirQRDoHistorico;
 window.confirmarRemoverHistoricoSelecionado = confirmarRemoverHistoricoSelecionado;
+async function fecharScannerContinuo() {
+  try {
+    if (leitorContinuo) {
+      await leitorContinuo.stop().catch(() => {});
+      await leitorContinuo.clear().catch(() => {});
+    }
+  } catch (e) {
+    console.warn("Erro ao fechar scanner contínuo:", e);
+  }
+
+  leitorContinuo = null;
+  leitorContinuoAberto = false;
+  continuoProcessando = false;
+
+  let modal = document.getElementById("modalScannerContinuo");
+  if (modal) modal.classList.add("hidden");
+
+  let reader = document.getElementById("readerContinuo");
+  if (reader) reader.innerHTML = "";
+
+  if (continuoContagem > 0) {
+    atualizarTudo();
+    mostrarToast(continuoContagem + " bobina(s) adicionada(s)");
+  }
+}
 window.abrirScannerContinuo = abrirScannerContinuo;
 window.fecharScannerContinuo = fecharScannerContinuo;
 window.geradorFecharFinal = geradorFecharFinal;
