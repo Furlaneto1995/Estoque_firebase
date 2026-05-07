@@ -5797,19 +5797,35 @@ async function confScannerQR() {
   document.getElementById('readerConf').innerHTML = '';
   document.getElementById('modalScannerConf').classList.remove('hidden');
 
+  let processando = false;
+
   try {
     conferencia.leitor = new Html5Qrcode('readerConf');
     await conferencia.leitor.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 220, height: 220 } },
       async (decodedText) => {
-        let resultado = confProcessarLeitura(decodedText);
-        confLogScanner(resultado, decodedText);
-        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
+        if (processando) return;
+        processando = true;
+
+        try {
+          let resultado = confProcessarLeitura(decodedText);
+          confLogScanner(resultado, decodedText);
+
+          let totalConferidas = conferencia.conferidas.length;
+          let totalFoto = conferencia.fotoEstoque.length;
+          let percentual = totalFoto > 0 ? Math.round((totalConferidas / totalFoto) * 100) : 0;
+          document.getElementById('confScannerStatus').textContent = totalConferidas + ' conferida(s) de ' + totalFoto + ' (' + percentual + '%)';
+        } catch (erro) {
+          console.error('Erro no scanner conferência:', erro);
+          confLogScanner('erro', decodedText);
+        }
 
         if (!conferencia.continuoMode) {
           await confFecharScanner();
         }
+
+        setTimeout(() => { processando = false; }, 1500);
       },
       () => {}
     );
@@ -5831,6 +5847,7 @@ async function confScannerContinuo() {
 
   let processando = false;
   let ultimoLido = '';
+  let ultimoTimestamp = 0;
 
   try {
     conferencia.leitor = new Html5Qrcode('readerConf');
@@ -5838,13 +5855,29 @@ async function confScannerContinuo() {
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 220, height: 220 } },
       async (decodedText) => {
-        if (processando || decodedText === ultimoLido) return;
+        if (processando) return;
+
+        let agora = Date.now();
+
+        // Se for o mesmo QR, só bloqueia se lido há menos de 3 segundos
+        if (decodedText === ultimoLido && (agora - ultimoTimestamp) < 3000) return;
+
         processando = true;
         ultimoLido = decodedText;
+        ultimoTimestamp = agora;
 
-        let resultado = confProcessarLeitura(decodedText);
-        confLogScanner(resultado, decodedText);
-        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
+        try {
+          let resultado = confProcessarLeitura(decodedText);
+          confLogScanner(resultado, decodedText);
+
+          let totalConferidas = conferencia.conferidas.length;
+          let totalFoto = conferencia.fotoEstoque.length;
+          let percentual = totalFoto > 0 ? Math.round((totalConferidas / totalFoto) * 100) : 0;
+          document.getElementById('confScannerStatus').textContent = totalConferidas + ' conferida(s) de ' + totalFoto + ' (' + percentual + '%)';
+        } catch (erro) {
+          console.error('Erro no scanner conferência:', erro);
+          confLogScanner('erro', decodedText);
+        }
 
         setTimeout(() => { processando = false; }, 1500);
       },
