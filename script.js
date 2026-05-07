@@ -5857,37 +5857,98 @@ async function confScannerContinuo() {
   }
 }
 
-function confLogScanner(resultado, texto) {
-  let log = document.getElementById('confScannerLog');
-  let agora = new Date().toLocaleTimeString();
-  let div = document.createElement('div');
-  div.style.padding = '3px 0';
-  div.style.borderBottom = '1px solid #f1f5f9';
-
+function confProcessarLeitura(textoLido) {
   let dados = null;
-  try { dados = JSON.parse(texto); } catch (e) { dados = interpretarQRSimplificado(texto); }
-  let nome = dados ? (dados.item + ' V' + dados.versao) : texto.substring(0, 20);
+  try { dados = JSON.parse(textoLido); }
+  catch (e) { dados = interpretarQRSimplificado(textoLido); }
 
-  if (resultado === 'conferida') {
-    div.style.color = '#16a34a';
-    div.textContent = '✅ ' + agora + ' — ' + nome + ' conferida';
-    if (navigator.vibrate) navigator.vibrate([100]);
-  } else if (resultado === 'duplicada') {
-    div.style.color = '#ca8a04';
-    div.textContent = '⏭️ ' + agora + ' — ' + nome + ' já conferida';
-    if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
-  } else if (resultado === 'extra') {
-    div.style.color = '#ca8a04';
-    div.textContent = '⚠️ ' + agora + ' — ' + nome + ' extra (não no estoque)';
-    if (navigator.vibrate) navigator.vibrate([200]);
-  } else {
-    div.style.color = '#dc2626';
-    div.textContent = '❌ ' + agora + ' — QR inválido';
-    if (navigator.vibrate) navigator.vibrate([200]);
+  if (!dados) {
+    mostrarToast('QR inválido', 'erro');
+    return 'erro';
   }
 
-  if (log.firstChild) log.insertBefore(div, log.firstChild);
-  else log.appendChild(div);
+  let encontrada = null;
+
+  // 1) Se o QR tem ID único, procura SOMENTE por ele na foto da conferência
+  if (dados.bobinaId) {
+    encontrada = conferencia.fotoEstoque.find(bob => {
+      return bob.idCurto === dados.bobinaId;
+    }) || null;
+  }
+
+  // 2) Fallback para etiquetas sem ID, mas com data
+  if (!encontrada && !dados.bobinaId && dados.dataBruta) {
+    let dataNumQR = dados.dataBruta.replace(/[^0-9]/g, '');
+
+    encontrada = conferencia.fotoEstoque.find(bob => {
+      let dataNumBob = String(bob.data || '').replace(/[^0-9]/g, '');
+      return (
+        dataNumBob === dataNumQR &&
+        bob.item === dados.item &&
+        String(bob.versao) === String(dados.versao) &&
+        Math.round(Number(bob.peso) || 0) === Math.round(Number(dados.peso) || 0)
+      );
+    }) || null;
+  }
+
+  // 3) Último fallback: item + versão + peso (apenas bobinas ainda não conferidas)
+  if (!encontrada && !dados.bobinaId && !dados.dataBruta) {
+    encontrada = conferencia.fotoEstoque.find(bob => {
+      return (
+        !conferencia.conferidas.includes(bob.id) &&
+        bob.item === dados.item &&
+        String(bob.versao) === String(dados.versao) &&
+        Math.round(Number(bob.peso) || 0) === Math.round(Number(dados.peso) || 0)
+      );
+    }) || null;
+  }
+
+  if (encontrada) {
+    if (conferencia.conferidas.includes(encontrada.id)) {
+      return 'duplicada';
+    }
+
+    conferencia.conferidas.push(encontrada.id);
+    confSalvar();
+    confRenderizarLista();
+    return 'conferida';
+  }
+
+  // Não encontrada na foto da conferência — verificar se existe no estoque geral
+  let registroEstoque = localizarRegistroPorQR(dados);
+
+  if (registroEstoque) {
+    // Bobina existe no estoque mas não está na conferência
+    // (pode ser de outro tipo que não foi selecionado para conferir)
+    if (registroEstoque._removidaEstoque) {
+      return 'extra'; // bobina excluída, trata como extra
+    } else if (registroEstoque.consumida) {
+      return 'extra'; // bobina consumida, trata como extra
+    } else {
+      // Bobina ativa no estoque mas não está na foto da conferência
+      return 'ja_no_estoque';
+    }
+  }
+
+  // Bobina completamente desconhecida — extra
+  let tamanho = '';
+  let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
+
+  if (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)]) {
+    tamanho = banco[tipo][dados.item][String(dados.versao)].tamanho;
+  }
+
+  conferencia.extras.push({
+    item: dados.item,
+    versao: String(dados.versao),
+    peso: dados.peso,
+    tamanho: tamanho,
+    tipo: tipo
+  });
+
+  confSalvar();
+  confRenderizarLista();
+  return 'extra';
 }
 
 async function confFecharScanner() {
