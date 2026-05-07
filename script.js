@@ -38,6 +38,21 @@ function normalizarTexto(texto){
     .toLowerCase();
 }
 
+function extrairIdCurtoBobina(id) {
+  if (!id || typeof id !== 'string') return '';
+
+  let texto = id.trim();
+
+  // QR salvo completo: BOB/.../idcurto  ou  item/.../idcurto
+  if (texto.includes('/')) {
+    let ultimaParte = texto.split('/').pop() || '';
+    return ultimaParte.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
+  }
+
+  // UUID normal
+  return texto.replace(/-/g, '').replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
+}
+
 function descobrirTipoPorItem(item) {
   let tipoEncontrado = "";
   Object.keys(banco).forEach(tipo => {
@@ -5537,10 +5552,7 @@ function iniciarConferencia() {
       tamanho = banco[tipoItem][item][versao].tamanho;
     }
 
-    let idCurto = '';
-    if (h.id && typeof h.id === 'string' && h.id.includes('-')) {
-      idCurto = h.id.replace(/-/g, '').substring(0, 8);
-    }
+    let idCurto = extrairIdCurtoBobina(h.id);
 
     foto.push({
       id: h.id,
@@ -5710,45 +5722,54 @@ function confProcessarLeitura(textoLido) {
     return 'erro';
   }
 
-  // Procura na foto do estoque
   let encontrada = null;
-  conferencia.fotoEstoque.forEach(bob => {
-    if (encontrada) return;
 
-    // 1º Tenta pelo ID Curto (etiquetas novas com BOB/)
-    if (dados.bobinaId && bob.idCurto === dados.bobinaId) { 
-      encontrada = bob; 
-      return; 
-    }
+  // 1) Se o QR tem ID único, procura SOMENTE por ele
+  if (dados.bobinaId) {
+    encontrada = conferencia.fotoEstoque.find(bob => {
+      return bob.idCurto === dados.bobinaId;
+    }) || null;
+  }
 
-    // 2º Tenta pela Data e Hora (etiquetas de hoje à tarde)
-    if (dados.dataBruta && bob.data) {
-      let dataNumBob = bob.data.replace(/[^0-9]/g, '');
-      let dataNumQR = dados.dataBruta.replace(/[^0-9]/g, '');
-      if (dataNumBob === dataNumQR && bob.item === dados.item && Math.round(bob.peso) === Math.round(dados.peso)) {
-        encontrada = bob;
-        return;
-      }
-    }
+  // 2) Fallback para etiquetas sem ID, mas com data
+  if (!encontrada && !dados.bobinaId && dados.dataBruta) {
+    let dataNumQR = dados.dataBruta.replace(/[^0-9]/g, '');
 
-    // 3º Fallback: só por Item + Versão + Peso (etiquetas antigas sem data e sem ID)
-    if (!dados.bobinaId && !dados.dataBruta && bob.item === dados.item && bob.versao === String(dados.versao) && Math.round(bob.peso) === Math.round(dados.peso)) {
-      encontrada = bob;
-    }
-  });
+    encontrada = conferencia.fotoEstoque.find(bob => {
+      let dataNumBob = String(bob.data || '').replace(/[^0-9]/g, '');
+      return (
+        dataNumBob === dataNumQR &&
+        bob.item === dados.item &&
+        String(bob.versao) === String(dados.versao) &&
+        Math.round(Number(bob.peso) || 0) === Math.round(Number(dados.peso) || 0)
+      );
+    }) || null;
+  }
+
+  // 3) Último fallback: item + versão + peso
+  if (!encontrada && !dados.bobinaId && !dados.dataBruta) {
+    encontrada = conferencia.fotoEstoque.find(bob => {
+      return (
+        bob.item === dados.item &&
+        String(bob.versao) === String(dados.versao) &&
+        Math.round(Number(bob.peso) || 0) === Math.round(Number(dados.peso) || 0)
+      );
+    }) || null;
+  }
 
   if (encontrada) {
     if (conferencia.conferidas.includes(encontrada.id)) {
       return 'duplicada';
     }
+
     conferencia.conferidas.push(encontrada.id);
     confSalvar();
     confRenderizarLista();
     return 'conferida';
   } else {
-    // Bobina extra
     let tamanho = '';
     let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
+
     if (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)]) {
       tamanho = banco[tipo][dados.item][String(dados.versao)].tamanho;
     }
@@ -5760,6 +5781,7 @@ function confProcessarLeitura(textoLido) {
       tamanho: tamanho,
       tipo: tipo
     });
+
     confSalvar();
     confRenderizarLista();
     return 'extra';
