@@ -5793,18 +5793,16 @@ async function confScannerQR() {
   document.getElementById('modalScannerConf').classList.remove('hidden');
 
   try {
+    await fecharTodosScanners();
+
     conferencia.leitor = new Html5Qrcode('readerConf');
     await conferencia.leitor.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 220, height: 220 } },
+      { fps: 12, qrbox: { width: 240, height: 240 } },
       async (decodedText) => {
-        let resultado = confProcessarLeitura(decodedText);
+        let resultado = await confProcessarLeitura(decodedText);
         confLogScanner(resultado, decodedText);
         document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
-
-        if (!conferencia.continuoMode) {
-          await confFecharScanner();
-        }
       },
       () => {}
     );
@@ -5824,29 +5822,35 @@ async function confScannerContinuo() {
   document.getElementById('readerConf').innerHTML = '';
   document.getElementById('modalScannerConf').classList.remove('hidden');
 
-  let processando = false;
-  let ultimoLido = '';
+  let ultimoQR = '';
+  let cooldown = false;
 
   try {
+    await fecharTodosScanners();
+
     conferencia.leitor = new Html5Qrcode('readerConf');
     await conferencia.leitor.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 220, height: 220 } },
+      { fps: 15, qrbox: { width: 230, height: 230 } },
       async (decodedText) => {
-        if (processando || decodedText === ultimoLido) return;
-        processando = true;
-        ultimoLido = decodedText;
+        if (cooldown) return;
 
-        let resultado = confProcessarLeitura(decodedText);
+        cooldown = true;
+        ultimoQR = decodedText;
+
+        let resultado = await confProcessarLeitura(decodedText);
         confLogScanner(resultado, decodedText);
-        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
+        
+        document.getElementById('confScannerStatus').textContent = 
+          conferencia.conferidas.length + ' conferida(s)';
 
-        setTimeout(() => { processando = false; }, 1500);
+        // Permite ler novamente a mesma etiqueta após 900ms (melhor UX)
+        setTimeout(() => { cooldown = false; }, 900);
       },
       () => {}
     );
   } catch (e) {
-    console.error('Erro scanner conferência:', e);
+    console.error('Erro scanner contínuo conferência:', e);
     mostrarToast('Não foi possível abrir a câmera', 'erro');
     confFecharScanner();
   }
