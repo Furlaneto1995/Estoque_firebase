@@ -3303,13 +3303,16 @@ async function abrirScannerQR() {
     document.getElementById("modalScannerQR").classList.remove("hidden");
     document.getElementById("scannerStatus").textContent = "Aponte a câmera para o QR da bobina";
     document.getElementById("reader").innerHTML = "";
+    
+    const readerContainer = document.getElementById("reader");
+    if (readerContainer) readerContainer.classList.add("camera-feedback");
+
     leitorQR = new Html5Qrcode("reader");
+
     await leitorQR.start(
       { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 220, height: 220 } },
+      { fps: 18, qrbox: { width: 240, height: 240 } },
       async (decodedText) => {
-        if (scannerProcessando) return;
-        scannerProcessando = true;
         await processarLeituraQR(decodedText);
       },
       () => {}
@@ -3351,6 +3354,32 @@ async function processarLeituraQR(textoLido) {
   await fecharScannerQR();
   mostrarResultadoQR(dados, registroEncontrado);
   scannerProcessando = false;
+}
+
+setCameraFeedback('sucesso');   // ou 'duplicado' ou 'erro' conforme o caso
+
+function setCameraFeedback(tipo) {
+  const reader = document.getElementById('reader');
+  const readerContinuo = document.getElementById('readerContinuo');
+  let container = reader || readerContinuo;
+  
+  if (!container) return;
+
+  // Remove classes anteriores
+  container.classList.remove('success', 'warning', 'error');
+  
+  if (tipo === 'sucesso') {
+    container.classList.add('success');
+  } else if (tipo === 'duplicado' || tipo === 'jaExiste') {
+    container.classList.add('warning');
+  } else if (tipo === 'erro') {
+    container.classList.add('error');
+  }
+
+  // Remove o efeito depois de 1 segundo
+  setTimeout(() => {
+    container.classList.remove('success', 'warning', 'error');
+  }, 1100);
 }
 
 function interpretarQRSimplificado(texto) {
@@ -3693,35 +3722,39 @@ let continuoContagem = 0;
 let continuoIdsLidos = [];
 
 async function abrirScannerContinuo() {
-  // Fecha qualquer scanner que esteja aberto
   await fecharTodosScanners();
 
   continuoContagem = 0;
   continuoIdsLidos = [];
   continuoProcessando = false;
+
   document.getElementById("modalScannerContinuo").classList.remove("hidden");
   document.getElementById("continuoContador").textContent = "0 bobinas adicionadas";
   document.getElementById("continuoLog").innerHTML = "";
   document.getElementById("readerContinuo").innerHTML = "";
 
+  const readerContainer = document.getElementById("readerContinuo");
+  if (readerContainer) readerContainer.classList.add("camera-feedback");
+
+  let cooldown = false;
+
   try {
     leitorContinuo = new Html5Qrcode("readerContinuo");
     await leitorContinuo.start(
       { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 220, height: 220 } },
+      { fps: 22, qrbox: { width: 240, height: 240 } },   // ← Aumentado para 22fps
       async (decodedText) => {
-        if (continuoProcessando) return;
-        continuoProcessando = true;
+        if (cooldown) return;
+        cooldown = true;
+
         try {
           await processarLeituraContinua(decodedText);
-        } catch (erro) {
-          console.error("Erro no scanner contínuo:", erro);
-          adicionarLogContinuo("❌ " + new Date().toLocaleTimeString() + " — erro ao processar leitura", "erro");
-          flashScanner('erro');
-          if (navigator.vibrate) navigator.vibrate([200]);
-        } finally {
-          setTimeout(() => { continuoProcessando = false; }, 1500);
+        } catch (e) {
+          console.error(e);
+          setCameraFeedback('erro');
         }
+
+        setTimeout(() => { cooldown = false; }, 650); // cooldown mais curto
       },
       () => {}
     );
@@ -3729,8 +3762,7 @@ async function abrirScannerContinuo() {
   } catch (erro) {
     console.error("Erro ao abrir scanner contínuo:", erro);
     mostrarToast("Não foi possível abrir a câmera", "erro");
-    document.getElementById("modalScannerContinuo").classList.add("hidden");
-    document.getElementById("readerContinuo").innerHTML = "";
+    fecharScannerContinuo();
   }
 }
 
