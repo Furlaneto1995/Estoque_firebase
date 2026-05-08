@@ -38,21 +38,6 @@ function normalizarTexto(texto){
     .toLowerCase();
 }
 
-function extrairIdCurtoBobina(id) {
-  if (!id || typeof id !== 'string') return '';
-
-  let texto = id.trim();
-
-  // QR salvo completo: BOB/.../idcurto  ou  item/.../idcurto
-  if (texto.includes('/')) {
-    let ultimaParte = texto.split('/').pop() || '';
-    return ultimaParte.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
-  }
-
-  // UUID normal
-  return texto.replace(/-/g, '').replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
-}
-
 function descobrirTipoPorItem(item) {
   let tipoEncontrado = "";
   Object.keys(banco).forEach(tipo => {
@@ -3322,18 +3307,10 @@ async function abrirScannerQR() {
     await leitorQR.start(
       { facingMode: "environment" },
       { fps: 10, qrbox: { width: 220, height: 220 } },
-       async (decodedText) => {
-        if (processando) return;
-        processando = true;
-
-        if (decodedText === ultimoLido) {
-          confLogScanner('duplicada', decodedText);
-          document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
-          setTimeout(() => { processando = false; }, 1500);
-          return;
-        }
-
-        ultimoLido = decodedText;
+      async (decodedText) => {
+        if (scannerProcessando) return;
+        scannerProcessando = true;
+        await processarLeituraQR(decodedText);
       },
       () => {}
     );
@@ -5552,7 +5529,16 @@ function iniciarConferencia() {
       tamanho = banco[tipoItem][item][versao].tamanho;
     }
 
-    let idCurto = extrairIdCurtoBobina(h.id);
+    let idCurto = '';
+if (h.id && typeof h.id === 'string') {
+  if (h.id.includes('/')) {
+    idCurto = h.id.split('/').pop();
+  } else if (h.id.includes('-')) {
+    idCurto = h.id.replace(/-/g, '').substring(0, 8);
+  } else {
+    idCurto = h.id.substring(0, 8);
+  }
+}
 
     foto.push({
       id: h.id,
@@ -5714,8 +5700,11 @@ function confRemoverExtra(idx) {
 
 function confProcessarLeitura(textoLido) {
   let dados = null;
-  try { dados = JSON.parse(textoLido); }
-  catch (e) { dados = interpretarQRSimplificado(textoLido); }
+  try {
+    dados = JSON.parse(textoLido);
+  } catch (e) {
+    dados = interpretarQRSimplificado(textoLido);
+  }
 
   if (!dados) {
     mostrarToast('QR inválido', 'erro');
@@ -5724,37 +5713,42 @@ function confProcessarLeitura(textoLido) {
 
   let encontrada = null;
 
-  // 1) Se o QR tem ID único, procura SOMENTE por ele
-  if (dados.bobinaId) {
-    encontrada = conferencia.fotoEstoque.find(bob => {
-      return bob.idCurto === dados.bobinaId;
-    }) || null;
+  // 1) Match EXATO pelo conteúdo inteiro do QR / id salvo
+  if (dados.id) {
+    encontrada = conferencia.fotoEstoque.find(bob =>
+      String(bob.id || '') === String(dados.id)
+    ) || null;
   }
 
-  // 2) Fallback para etiquetas sem ID, mas com data
-  if (!encontrada && !dados.bobinaId && dados.dataBruta) {
-    let dataNumQR = dados.dataBruta.replace(/[^0-9]/g, '');
+  // 2) Fallback pelo ID curto final
+  if (!encontrada && dados.bobinaId) {
+    encontrada = conferencia.fotoEstoque.find(bob =>
+      String(bob.idCurto || '') === String(dados.bobinaId)
+    ) || null;
+  }
 
+  // 3) Fallback por data + item + versão + peso
+  if (!encontrada && dados.dataBruta) {
     encontrada = conferencia.fotoEstoque.find(bob => {
       let dataNumBob = String(bob.data || '').replace(/[^0-9]/g, '');
+      let dataNumQR = String(dados.dataBruta || '').replace(/[^0-9]/g, '');
+
       return (
         dataNumBob === dataNumQR &&
-        bob.item === dados.item &&
+        String(bob.item) === String(dados.item) &&
         String(bob.versao) === String(dados.versao) &&
-        Math.round(Number(bob.peso) || 0) === Math.round(Number(dados.peso) || 0)
+        Math.round(Number(bob.peso)) === Math.round(Number(dados.peso))
       );
     }) || null;
   }
 
-  // 3) Último fallback: item + versão + peso
-  if (!encontrada && !dados.bobinaId && !dados.dataBruta) {
-    encontrada = conferencia.fotoEstoque.find(bob => {
-      return (
-        bob.item === dados.item &&
-        String(bob.versao) === String(dados.versao) &&
-        Math.round(Number(bob.peso) || 0) === Math.round(Number(dados.peso) || 0)
-      );
-    }) || null;
+  // 4) Último fallback: item + versão + peso
+  if (!encontrada) {
+    encontrada = conferencia.fotoEstoque.find(bob =>
+      String(bob.item) === String(dados.item) &&
+      String(bob.versao) === String(dados.versao) &&
+      Math.round(Number(bob.peso)) === Math.round(Number(dados.peso))
+    ) || null;
   }
 
   if (encontrada) {
@@ -5766,26 +5760,27 @@ function confProcessarLeitura(textoLido) {
     confSalvar();
     confRenderizarLista();
     return 'conferida';
-  } else {
-    let tamanho = '';
-    let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
-
-    if (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)]) {
-      tamanho = banco[tipo][dados.item][String(dados.versao)].tamanho;
-    }
-
-    conferencia.extras.push({
-      item: dados.item,
-      versao: String(dados.versao),
-      peso: dados.peso,
-      tamanho: tamanho,
-      tipo: tipo
-    });
-
-    confSalvar();
-    confRenderizarLista();
-    return 'extra';
   }
+
+  // Bobina extra
+  let tamanho = '';
+  let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
+
+  if (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)]) {
+    tamanho = banco[tipo][dados.item][String(dados.versao)].tamanho;
+  }
+
+  conferencia.extras.push({
+    item: dados.item,
+    versao: String(dados.versao),
+    peso: dados.peso,
+    tamanho: tamanho,
+    tipo: tipo
+  });
+
+  confSalvar();
+  confRenderizarLista();
+  return 'extra';
 }
 
 // Scanner QR único
@@ -5797,35 +5792,19 @@ async function confScannerQR() {
   document.getElementById('readerConf').innerHTML = '';
   document.getElementById('modalScannerConf').classList.remove('hidden');
 
-  let processando = false;
-
   try {
     conferencia.leitor = new Html5Qrcode('readerConf');
     await conferencia.leitor.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 220, height: 220 } },
       async (decodedText) => {
-        if (processando) return;
-        processando = true;
-
-        try {
-          let resultado = confProcessarLeitura(decodedText);
-          confLogScanner(resultado, decodedText);
-
-          let totalConferidas = conferencia.conferidas.length;
-          let totalFoto = conferencia.fotoEstoque.length;
-          let percentual = totalFoto > 0 ? Math.round((totalConferidas / totalFoto) * 100) : 0;
-          document.getElementById('confScannerStatus').textContent = totalConferidas + ' conferida(s) de ' + totalFoto + ' (' + percentual + '%)';
-        } catch (erro) {
-          console.error('Erro no scanner conferência:', erro);
-          confLogScanner('erro', decodedText);
-        }
+        let resultado = confProcessarLeitura(decodedText);
+        confLogScanner(resultado, decodedText);
+        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
 
         if (!conferencia.continuoMode) {
           await confFecharScanner();
         }
-
-        setTimeout(() => { processando = false; }, 1500);
       },
       () => {}
     );
@@ -5847,7 +5826,6 @@ async function confScannerContinuo() {
 
   let processando = false;
   let ultimoLido = '';
-  let ultimoTimestamp = 0;
 
   try {
     conferencia.leitor = new Html5Qrcode('readerConf');
@@ -5855,29 +5833,13 @@ async function confScannerContinuo() {
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 220, height: 220 } },
       async (decodedText) => {
-        if (processando) return;
-
-        let agora = Date.now();
-
-        // Se for o mesmo QR, só bloqueia se lido há menos de 3 segundos
-        if (decodedText === ultimoLido && (agora - ultimoTimestamp) < 3000) return;
-
+        if (processando || decodedText === ultimoLido) return;
         processando = true;
         ultimoLido = decodedText;
-        ultimoTimestamp = agora;
 
-        try {
-          let resultado = confProcessarLeitura(decodedText);
-          confLogScanner(resultado, decodedText);
-
-          let totalConferidas = conferencia.conferidas.length;
-          let totalFoto = conferencia.fotoEstoque.length;
-          let percentual = totalFoto > 0 ? Math.round((totalConferidas / totalFoto) * 100) : 0;
-          document.getElementById('confScannerStatus').textContent = totalConferidas + ' conferida(s) de ' + totalFoto + ' (' + percentual + '%)';
-        } catch (erro) {
-          console.error('Erro no scanner conferência:', erro);
-          confLogScanner('erro', decodedText);
-        }
+        let resultado = confProcessarLeitura(decodedText);
+        confLogScanner(resultado, decodedText);
+        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
 
         setTimeout(() => { processando = false; }, 1500);
       },
@@ -5890,98 +5852,37 @@ async function confScannerContinuo() {
   }
 }
 
-function confProcessarLeitura(textoLido) {
+function confLogScanner(resultado, texto) {
+  let log = document.getElementById('confScannerLog');
+  let agora = new Date().toLocaleTimeString();
+  let div = document.createElement('div');
+  div.style.padding = '3px 0';
+  div.style.borderBottom = '1px solid #f1f5f9';
+
   let dados = null;
-  try { dados = JSON.parse(textoLido); }
-  catch (e) { dados = interpretarQRSimplificado(textoLido); }
+  try { dados = JSON.parse(texto); } catch (e) { dados = interpretarQRSimplificado(texto); }
+  let nome = dados ? (dados.item + ' V' + dados.versao) : texto.substring(0, 20);
 
-  if (!dados) {
-    mostrarToast('QR inválido', 'erro');
-    return 'erro';
+  if (resultado === 'conferida') {
+    div.style.color = '#16a34a';
+    div.textContent = '✅ ' + agora + ' — ' + nome + ' conferida';
+    if (navigator.vibrate) navigator.vibrate([100]);
+  } else if (resultado === 'duplicada') {
+    div.style.color = '#ca8a04';
+    div.textContent = '⏭️ ' + agora + ' — ' + nome + ' já conferida';
+    if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+  } else if (resultado === 'extra') {
+    div.style.color = '#ca8a04';
+    div.textContent = '⚠️ ' + agora + ' — ' + nome + ' extra (não no estoque)';
+    if (navigator.vibrate) navigator.vibrate([200]);
+  } else {
+    div.style.color = '#dc2626';
+    div.textContent = '❌ ' + agora + ' — QR inválido';
+    if (navigator.vibrate) navigator.vibrate([200]);
   }
 
-  let encontrada = null;
-
-  // 1) Se o QR tem ID único, procura SOMENTE por ele na foto da conferência
-  if (dados.bobinaId) {
-    encontrada = conferencia.fotoEstoque.find(bob => {
-      return bob.idCurto === dados.bobinaId;
-    }) || null;
-  }
-
-  // 2) Fallback para etiquetas sem ID, mas com data
-  if (!encontrada && !dados.bobinaId && dados.dataBruta) {
-    let dataNumQR = dados.dataBruta.replace(/[^0-9]/g, '');
-
-    encontrada = conferencia.fotoEstoque.find(bob => {
-      let dataNumBob = String(bob.data || '').replace(/[^0-9]/g, '');
-      return (
-        dataNumBob === dataNumQR &&
-        bob.item === dados.item &&
-        String(bob.versao) === String(dados.versao) &&
-        Math.round(Number(bob.peso) || 0) === Math.round(Number(dados.peso) || 0)
-      );
-    }) || null;
-  }
-
-  // 3) Último fallback: item + versão + peso (apenas bobinas ainda não conferidas)
-  if (!encontrada && !dados.bobinaId && !dados.dataBruta) {
-    encontrada = conferencia.fotoEstoque.find(bob => {
-      return (
-        !conferencia.conferidas.includes(bob.id) &&
-        bob.item === dados.item &&
-        String(bob.versao) === String(dados.versao) &&
-        Math.round(Number(bob.peso) || 0) === Math.round(Number(dados.peso) || 0)
-      );
-    }) || null;
-  }
-
-  if (encontrada) {
-    if (conferencia.conferidas.includes(encontrada.id)) {
-      return 'duplicada';
-    }
-
-    conferencia.conferidas.push(encontrada.id);
-    confSalvar();
-    confRenderizarLista();
-    return 'conferida';
-  }
-
-  // Não encontrada na foto da conferência — verificar se existe no estoque geral
-  let registroEstoque = localizarRegistroPorQR(dados);
-
-  if (registroEstoque) {
-    // Bobina existe no estoque mas não está na conferência
-    // (pode ser de outro tipo que não foi selecionado para conferir)
-    if (registroEstoque._removidaEstoque) {
-      return 'extra'; // bobina excluída, trata como extra
-    } else if (registroEstoque.consumida) {
-      return 'extra'; // bobina consumida, trata como extra
-    } else {
-      // Bobina ativa no estoque mas não está na foto da conferência
-      return 'ja_no_estoque';
-    }
-  }
-
-  // Bobina completamente desconhecida — extra
-  let tamanho = '';
-  let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
-
-  if (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)]) {
-    tamanho = banco[tipo][dados.item][String(dados.versao)].tamanho;
-  }
-
-  conferencia.extras.push({
-    item: dados.item,
-    versao: String(dados.versao),
-    peso: dados.peso,
-    tamanho: tamanho,
-    tipo: tipo
-  });
-
-  confSalvar();
-  confRenderizarLista();
-  return 'extra';
+  if (log.firstChild) log.insertBefore(div, log.firstChild);
+  else log.appendChild(div);
 }
 
 async function confFecharScanner() {
