@@ -3424,15 +3424,24 @@ async function fecharScannerContinuo() {
       await leitorContinuo.stop().catch(() => {});
       await leitorContinuo.clear().catch(() => {});
     }
-  } catch (e) { console.warn("Erro ao fechar scanner contínuo:", e); }
+  } catch (e) {
+    console.warn("Erro ao fechar scanner contínuo:", e);
+  }
+
   leitorContinuo = null;
   leitorContinuoAberto = false;
   continuoProcessando = false;
+
   let modal = document.getElementById("modalScannerContinuo");
   if (modal) modal.classList.add("hidden");
+
   let reader = document.getElementById("readerContinuo");
   if (reader) reader.innerHTML = "";
-  if (continuoContagem > 0) { atualizarTudo(); mostrarToast(continuoContagem + " bobina(s) adicionada(s)"); }
+
+  if (continuoContagem > 0) {
+    atualizarTudo();
+    mostrarToast(continuoContagem + " bobina(s) adicionada(s)");
+  }
 }
 
 /* ================= EXPORTAR QR CODES ================= */
@@ -4970,10 +4979,30 @@ function confLogScanner(resultado, texto) {
   let dados = null;
   try { dados = JSON.parse(texto); } catch (e) { dados = interpretarQRSimplificado(texto); }
   let nome = dados ? (dados.item + ' V' + dados.versao) : texto.substring(0, 20);
-  if (resultado === 'conferida') { div.style.color = '#16a34a'; div.textContent = '✅ ' + agora + ' — ' + nome + ' conferida'; if (navigator.vibrate) navigator.vibrate([100]); }
-  else if (resultado === 'duplicada') { div.style.color = '#ca8a04'; div.textContent = '⏭️ ' + agora + ' — ' + nome + ' já conferida'; if (navigator.vibrate) navigator.vibrate([50, 30, 50]); }
-  else if (resultado === 'extra') { div.style.color = '#ca8a04'; div.textContent = '⚠️ ' + agora + ' — ' + nome + ' extra (não no estoque)'; if (navigator.vibrate) navigator.vibrate([200]); }
-  else { div.style.color = '#dc2626'; div.textContent = '❌ ' + agora + ' — QR inválido'; if (navigator.vibrate) navigator.vibrate([200]); }
+  if (resultado === 'conferida') {
+  div.style.color = '#16a34a';
+  div.textContent = '✅ ' + agora + ' — ' + nome + ' conferida';
+  if (navigator.vibrate) navigator.vibrate([80]);
+  // 1 vibração curta = sucesso
+}
+else if (resultado === 'duplicada') {
+  div.style.color = '#ca8a04';
+  div.textContent = '⏭️ ' + agora + ' — ' + nome + ' já conferida';
+  if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 60]);
+  // 3 pulsos rápidos = já lida
+}
+else if (resultado === 'extra') {
+  div.style.color = '#ea580c';
+  div.textContent = '⚠️ ' + agora + ' — ' + nome + ' extra (não no estoque)';
+  if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
+  // 2 pulsos longos = atenção
+}
+else {
+  div.style.color = '#dc2626';
+  div.textContent = '❌ ' + agora + ' — QR inválido';
+  if (navigator.vibrate) navigator.vibrate([500]);
+  // 1 vibração longa = erro
+}
   if (log.firstChild) log.insertBefore(div, log.firstChild);
   else log.appendChild(div);
 }
@@ -5145,31 +5174,6 @@ window.abrirAcoesHistorico = abrirAcoesHistorico;
 window.fecharModalHistoricoAcoes = fecharModalHistoricoAcoes;
 window.abrirQRDoHistorico = abrirQRDoHistorico;
 window.confirmarRemoverHistoricoSelecionado = confirmarRemoverHistoricoSelecionado;
-async function fecharScannerContinuo() {
-  try {
-    if (leitorContinuo) {
-      await leitorContinuo.stop().catch(() => {});
-      await leitorContinuo.clear().catch(() => {});
-    }
-  } catch (e) {
-    console.warn("Erro ao fechar scanner contínuo:", e);
-  }
-
-  leitorContinuo = null;
-  leitorContinuoAberto = false;
-  continuoProcessando = false;
-
-  let modal = document.getElementById("modalScannerContinuo");
-  if (modal) modal.classList.add("hidden");
-
-  let reader = document.getElementById("readerContinuo");
-  if (reader) reader.innerHTML = "";
-
-  if (continuoContagem > 0) {
-    atualizarTudo();
-    mostrarToast(continuoContagem + " bobina(s) adicionada(s)");
-  }
-}
 window.abrirScannerContinuo = abrirScannerContinuo;
 window.fecharScannerContinuo = fecharScannerContinuo;
 window.geradorFecharFinal = geradorFecharFinal;
