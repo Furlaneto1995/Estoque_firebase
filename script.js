@@ -3073,38 +3073,34 @@ function interpretarQRSimplificado(texto) {
 function localizarRegistroPorQR(dados) {
   // PRIORIDADE: ID curto único
   if (dados.bobinaId) {
-    let encontrada = historico.find(h => {
+    let encontrada = historico.find(function(h) {
       if (!h || h.tipo !== "Entrada") return false;
       return extrairIdCurtoBobina(h.id) === dados.bobinaId;
     });
     if (encontrada) return encontrada;
   }
 
-  // FALLBACK para etiquetas antigas sem ID
-  let qrAntigo = dados.item + "/" + dados.versao + "/" + Math.round(parseFloat(dados.peso));
-  if (dados.dataBruta) {
-    let partesBruta = dados.dataBruta.split("/");
-    qrAntigo += "/" + partesBruta[0] + "/" + (partesBruta[1] || '').padEnd(6, '0');
-  }
-
-  return historico.find(h => {
+  // FALLBACK para etiquetas sem ID — busca por item/versao/peso/data
+  let candidatos = historico.filter(function(h) {
     if (!h || h.tipo !== "Entrada") return false;
     let partes = h.item.split(" - V");
-    let qrDoHistorico = partes[0] + "/" + partes[1] + "/" + Math.round(h.qtd);
-    let dataParaComparar = h.dataProducao || h.data;
-    if (dataParaComparar) {
-      let partesH = dataParaComparar.split(", ");
-      if (partesH.length === 2) {
-        let dmaH = partesH[0].split("/");
-        if (dmaH.length === 3) {
-          qrDoHistorico += "/" + dmaH[0] + dmaH[1] + dmaH[2] + "/" + partesH[1].replace(/:/g, "").padEnd(6, '0');
-        }
-      }
-    }
-    if (qrAntigo === qrDoHistorico) return true;
-    if (dados.id && h.id === dados.id) return true;
-    return false;
-  }) || null;
+    if (partes.length < 2) return false;
+    return String(partes[0]) === String(dados.item) &&
+      String(partes[1]) === String(dados.versao) &&
+      Math.round(Number(h.qtd)) === Math.round(Number(dados.peso));
+  });
+
+  // Se tem data, tenta refinar
+  if (dados.dataBruta && candidatos.length > 1) {
+    let dataNumQR = String(dados.dataBruta).replace(/[^0-9]/g, '');
+    let comData = candidatos.filter(function(h) {
+      let dataNumH = String(h.data || '').replace(/[^0-9]/g, '');
+      return dataNumH === dataNumQR;
+    });
+    if (comData.length > 0) return comData[0];
+  }
+
+  return candidatos[0] || null;
 }
 
 function mostrarResultadoQR(dados, registro) {
@@ -3225,9 +3221,8 @@ function entradaRapidaQR() {
     mostrarToast("Bobina já registrada (" + status + ")", "erro"); return;
   }
   salvarEstadoParaDesfazer();
-  let identificador = item + " - V" + versao;
-  // Usa o id do QR como id da entrada para garantir rastreabilidade
-  let idSalvar = dados.id || crypto.randomUUID();
+let identificador = item + " - V" + versao;
+let idSalvar = dados.id || crypto.randomUUID();
   estoque[identificador] = (estoque[identificador] || 0) + peso;
   estoque[identificador + "_qtd"] = (estoque[identificador + "_qtd"] || 0) + 1;
   let dataFinal = (opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : (dados.data || new Date().toLocaleString('pt-BR'));
@@ -3354,7 +3349,7 @@ async function processarLeituraContinua(textoLido) {
   if (!dados) { adicionarLogContinuo("⚠️ " + agora + " — QR inválido", "erro"); return; }
 
   // Usa bobinaId (novo) ou id completo como chave de deduplicação
-  let idQR = dados.bobinaId || dados.id || (dados.item + "/V" + dados.versao + "/" + dados.peso);
+  let idQR = dados.bobinaId || extrairIdCurtoBobina(dados.id) || (dados.item + "/V" + dados.versao + "/" + dados.peso);
   if (continuoIdsLidos.includes(idQR)) {
     adicionarLogContinuo("⏭️ " + agora + " — " + dados.item + " V" + dados.versao + " — já lido", "duplicado");
     if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
