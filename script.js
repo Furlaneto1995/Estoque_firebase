@@ -171,6 +171,7 @@ const bancoPadrao = {
       "2":  { tamanho: "64.5 x 78" },
       "10": { tamanho: "105 x 58" },
       "4":  { tamanho: "93 x 78" },
+      "5":  { tamanho: "95 x 78" },
       "7":  { tamanho: "91.5 x 58" },
       "9":  { tamanho: "87 x 58" },
       "6":  { tamanho: "94 x 58" }
@@ -218,7 +219,6 @@ function carregarDados() {
   atualizarTabela();
   atualizarHistorico();
 
-  // Mostrar app se já logou
   if (sessionStorage.getItem('logado') === 'true') {
     let header = document.getElementById('appHeader');
     let nav = document.getElementById('appNav');
@@ -226,7 +226,6 @@ function carregarDados() {
     if (nav) nav.style.display = '';
   }
 
-  // Inicia escuta do Firebase
   if (typeof escutarFirebase === 'function') {
     escutarFirebase();
   }
@@ -235,7 +234,6 @@ function carregarDados() {
 function salvarDados() {
   localStorage.setItem("estoque", JSON.stringify(estoque));
   localStorage.setItem("historico", JSON.stringify(historico));
-
   if (typeof salvarNoFirebase === 'function') {
     salvarNoFirebase();
   }
@@ -1373,36 +1371,24 @@ function fecharDetalhes() {
 
 function irParaBobinaNosDetalhes(registro, indexHistorico) {
   if (!registro || !registro.item) return;
-
   let itemApenas = registro.item.split(" - ")[0].trim();
   let tipo = descobrirTipoPorItem(itemApenas);
-
-  if (!tipo) {
-    mostrarToast('Tipo não encontrado', 'erro');
-    return;
-  }
-
+  if (!tipo) { mostrarToast('Tipo não encontrado', 'erro'); return; }
   abrirDetalhes(tipo);
-
   let campoBusca = document.getElementById('buscaDetalhes');
   if (campoBusca) campoBusca.value = "";
   atualizarDetalhes();
-
   setTimeout(() => {
     let partes = registro.item.split(" - V");
     let idGrupo = "gp" + partes[0].replace(/[^a-zA-Z0-9]/g, '') + partes[1].replace(/[^a-zA-Z0-9]/g, '');
     abrirGrupoDetalhePorId(idGrupo);
-
     let digitalData = registro.data.replace(/[^0-9]/g, "");
     let linha = document.getElementById("BOBINA-" + indexHistorico + "-" + digitalData);
     if (linha) {
       linha.scrollIntoView({ behavior: 'smooth', block: 'center' });
       linha.style.backgroundColor = '#fef3c7';
       linha.style.outline = '3px solid #1e3a8a';
-      setTimeout(() => {
-        linha.style.backgroundColor = '';
-        linha.style.outline = '';
-      }, 5000);
+      setTimeout(() => { linha.style.backgroundColor = ''; linha.style.outline = ''; }, 5000);
     } else {
       mostrarToast("Bobina localizada, mas o filtro a escondeu", "erro");
     }
@@ -1924,875 +1910,6 @@ function atualizarTudo() {
   }
 }
 
-/* ================= SAÍDA COM SELEÇÃO DE BOBINAS ================= */
-
-let modoSugestao = 'peso'; // 'peso' ou 'idade'
-let saidaAtual = { identificador: null, pesoTotal: 0, pesoRestante: 0, bobinas: [], descontos: {}, zeradas: [], combinacoes: [], comboAtual: 0 };
-let bobinaZeradaAtual = null;
-
-function encontrarMelhorCombinacao(bobinas, pesoAlvo) {
-  return encontrarTodasCombinacoes(bobinas, pesoAlvo)[0] || [];
-}
-function alternarModoSugestao() {
-  modoSugestao = modoSugestao === 'peso' ? 'idade' : 'peso';
-  recalcularSugestoes();
-}
-
-function recalcularSugestoes() {
-  if (modoSugestao === 'idade') {
-    let pesoAlvo = saidaAtual.pesoTotal;
-    let bobinas = saidaAtual.bobinas;
-
-    // 1. ORDENAÇÃO INFALÍVEL POR DATA (Mais velha primeiro)
-    let indicesOrdenados = bobinas.map((bob, idx) => {
-      // Pega a data da bobina (dataProducao se existir, senão a data de entrada)
-      let dataString = bob.dataProducao || bob.data;
-      let timestampOrdenacao = "99999999999999"; // Fallback caso não tenha data (vai pro final)
-
-      if (dataString) {
-        // Ex: "22/04/2026, 11:28:49" -> ["22/04/2026", "11:28:49"]
-        let partes = dataString.split(", ");
-        
-        if (partes.length > 0) {
-          let dma = partes[0].split("/"); // ["22", "04", "2026"]
-          if (dma.length === 3) {
-            let ano = dma[2];
-            let mes = dma[1].padStart(2, '0');
-            let dia = dma[0].padStart(2, '0');
-            
-            let hora = "000000";
-            if (partes[1]) {
-              // "11:28:49" -> "112849"
-              hora = partes[1].replace(/:/g, "").padEnd(6, '0');
-            }
-            
-            // Ex: 20260422112849
-            timestampOrdenacao = ano + mes + dia + hora;
-          }
-        }
-      }
-      return { idx: idx, ts: timestampOrdenacao };
-    });
-
-    // Ordena do menor (mais antigo) para o maior (mais novo)
-    indicesOrdenados.sort((a, b) => a.ts.localeCompare(b.ts));
-
-    // Agora temos a lista de índices das bobinas na ordem cronológica correta
-    let ordemIdade = indicesOrdenados.map(o => o.idx);
-
-    // 2. MONTA AS SUGESTÕES
-    // Sugestão 1: FIFO puro (pega as mais velhas até atingir ou passar o peso)
-    let combo1 = [];
-    let soma1 = 0;
-    for (let i = 0; i < ordemIdade.length; i++) {
-      combo1.push(ordemIdade[i]);
-      soma1 += bobinas[ordemIdade[i]].qtd;
-      if (soma1 >= pesoAlvo) break;
-    }
-
-    // Sugestão 2: FIFO com uma a menos (mostra o que acontece se não pegar a última)
-    let combo2 = combo1.length > 1 ? combo1.slice(0, -1) : [];
-
-    // Sugestão 3: FIFO puro + próxima mais velha (se houver)
-    let combo3 = [...combo1];
-    let usados = new Set(combo3);
-    for (let i = 0; i < ordemIdade.length; i++) {
-      if (!usados.has(ordemIdade[i])) {
-        combo3.push(ordemIdade[i]);
-        break;
-      }
-    }
-
-    // 3. CALCULA DIFERENÇAS E ORDENA AS MELHORES
-    let candidatas = [
-      { indices: combo1, soma: combo1.reduce((a, i) => a + bobinas[i].qtd, 0) },
-      { indices: combo2, soma: combo2.reduce((a, i) => a + bobinas[i].qtd, 0) },
-      { indices: combo3, soma: combo3.reduce((a, i) => a + bobinas[i].qtd, 0) }
-    ];
-
-    candidatas.forEach(c => { c.diffAbs = Math.abs(c.soma - pesoAlvo); });
-
-    // Remove vazias e duplicadas
-    let combos = [];
-    let chaves = new Set();
-
-    candidatas.forEach(c => {
-      if (c.indices.length === 0) return;
-      // Cria uma chave única baseada no peso total e quantidade de bobinas
-      let ch = Math.round(c.soma) + '|' + c.indices.length;
-      if (!chaves.has(ch)) {
-        chaves.add(ch);
-        combos.push(c);
-      }
-    });
-
-    // Ordena pela mais próxima do zero (mesmo respeitando a regra de idade)
-    combos.sort((a, b) => {
-      if (a.diffAbs !== b.diffAbs) return a.diffAbs - b.diffAbs;
-      return a.indices.length - b.indices.length;
-    });
-
-    // Pega só os índices
-    saidaAtual.combinacoes = combos.slice(0, 3).map(c => c.indices);
-
-  } else {
-    // MODO PESO (Lógica inalterada)
-    saidaAtual.combinacoes = encontrarTodasCombinacoes(saidaAtual.bobinas, saidaAtual.pesoTotal);
-  }
-
-  // 4. APLICA A PRIMEIRA COMBINAÇÃO E RENDERIZA A TELA
-  saidaAtual.comboAtual = 0;
-  saidaAtual.descontos = {};
-  saidaAtual.zeradas = [];
-
-  if (saidaAtual.combinacoes.length > 0) {
-    saidaAtual.combinacoes[0].forEach(idx => {
-      let indexReal = historico.indexOf(saidaAtual.bobinas[idx]);
-      saidaAtual.descontos[indexReal] = saidaAtual.bobinas[idx].qtd;
-      saidaAtual.zeradas.push(indexReal);
-    });
-  }
-
-  renderizarBobinasSaida();
-}
-
-window.alternarModoSugestao = alternarModoSugestao;
-
-function encontrarTodasCombinacoes(bobinas, pesoAlvo) {
-  let n = bobinas.length;
-  let todas = [];
-
-  if (n <= 20) {
-    let totalCombinacoes = Math.pow(2, n);
-
-    for (let mask = 1; mask < totalCombinacoes; mask++) {
-      let soma = 0;
-      let indices = [];
-
-      for (let i = 0; i < n; i++) {
-        if (mask & (1 << i)) {
-          soma += bobinas[i].qtd;
-          indices.push(i);
-        }
-      }
-
-      todas.push({
-        indices,
-        soma,
-        diffAbs: Math.abs(soma - pesoAlvo)
-      });
-    }
-  } else {
-    // fallback simples para muitos itens
-    let ordenadas = bobinas
-      .map((b, i) => ({ idx: i, peso: b.qtd }))
-      .sort((a, b) => b.peso - a.peso);
-
-    let tentativas = [];
-
-    // tentativa 1: maiores primeiro
-    let soma1 = 0, idx1 = [];
-    for (let b of ordenadas) {
-      idx1.push(b.idx);
-      soma1 += b.peso;
-      if (soma1 >= pesoAlvo) break;
-    }
-    tentativas.push({ indices: idx1, soma: soma1, diffAbs: Math.abs(soma1 - pesoAlvo) });
-
-    // tentativa 2: menores primeiro
-    let asc = [...ordenadas].reverse();
-    let soma2 = 0, idx2 = [];
-    for (let b of asc) {
-      idx2.push(b.idx);
-      soma2 += b.peso;
-      if (soma2 >= pesoAlvo) break;
-    }
-    tentativas.push({ indices: idx2, soma: soma2, diffAbs: Math.abs(soma2 - pesoAlvo) });
-
-    // tentativa 3: começando do segundo maior
-    let soma3 = 0, idx3 = [];
-    for (let i = 1; i < ordenadas.length; i++) {
-      idx3.push(ordenadas[i].idx);
-      soma3 += ordenadas[i].peso;
-      if (soma3 >= pesoAlvo) break;
-    }
-    if (idx3.length) {
-      tentativas.push({ indices: idx3, soma: soma3, diffAbs: Math.abs(soma3 - pesoAlvo) });
-    }
-
-    todas = tentativas;
-  }
-
-  // Ordena pelas mais próximas de zero
-  todas.sort((a, b) => {
-    if (a.diffAbs !== b.diffAbs) return a.diffAbs - b.diffAbs;
-    if (a.indices.length !== b.indices.length) return a.indices.length - b.indices.length;
-    return a.soma - b.soma;
-  });
-
-  // Remove duplicadas por resultado final
-  let unicas = [];
-  let vistas = new Set();
-
-  todas.forEach(combo => {
-    let chave = Math.round(combo.soma) + '|' + combo.indices.length;
-    if (!vistas.has(chave)) {
-      vistas.add(chave);
-      unicas.push(combo);
-    }
-  });
-
-  return unicas.slice(0, 3).map(c => c.indices);
-}
-function abrirModalSaida(identificador, pesoSaida) {
-  saidaAtual.identificador = identificador;
-  saidaAtual.pesoTotal = pesoSaida;
-  saidaAtual.pesoRestante = pesoSaida;
-  saidaAtual.descontos = {};
-  saidaAtual.zeradas = [];
-  
-  let entradas = historico.filter(h => h.item === identificador && h.tipo === "Entrada" && !h.consumida && !h._removidaEstoque);
-  let pesoAtual = estoque[identificador] || 0;
-  let bobinas = [], soma = 0;
-  for (let i = entradas.length - 1; i >= 0; i--) {
-    if (soma >= pesoAtual) break;
-    bobinas.unshift(entradas[i]);
-    soma += entradas[i].qtd;
-  }
-  saidaAtual.bobinas = bobinas;
-
-  // Calcula combinações e aplica a primeira
-  saidaAtual.combinacoes = encontrarTodasCombinacoes(bobinas, pesoSaida);
-  saidaAtual.comboAtual = 0;
-  aplicarCombinacao(0);
-
-  // Define o título simples: Item - Versão
-  document.getElementById('modalSaidaTitulo').textContent = identificador;
-  
-  renderizarBobinasSaida();
-  document.getElementById('modalSaida').classList.remove('hidden');
-}
-
-function aplicarCombinacao(indice) {
-  if (indice < 0 || indice >= saidaAtual.combinacoes.length) return;
-  saidaAtual.comboAtual = indice;
-  saidaAtual.descontos = {};
-  saidaAtual.zeradas = [];
-
-  saidaAtual.combinacoes[indice].forEach(idx => {
-    let indexReal = historico.indexOf(saidaAtual.bobinas[idx]);
-    saidaAtual.descontos[indexReal] = saidaAtual.bobinas[idx].qtd;
-    saidaAtual.zeradas.push(indexReal);
-  });
-
-  renderizarBobinasSaida();
-}
-
-function proximaCombinacao() {
-  let proximo = saidaAtual.comboAtual + 1;
-  if (proximo >= saidaAtual.combinacoes.length) proximo = 0;
-  aplicarCombinacao(proximo);
-}
-
-function combinacaoAnterior() {
-  let anterior = saidaAtual.comboAtual - 1;
-  if (anterior < 0) anterior = saidaAtual.combinacoes.length - 1;
-  aplicarCombinacao(anterior);
-}
-
-window.proximaCombinacao = proximaCombinacao;
-window.combinacaoAnterior = combinacaoAnterior;
-
-function renderizarBobinasSaida() {
-  let tbody = document.getElementById('modalSaidaBody');
-  let html = '';
-  let totalSelecionado = 0;
-  let opPeso = Math.round(saidaAtual.pesoTotal);
-
-  saidaAtual.bobinas.forEach((bob, idx) => {
-    let indexReal = historico.indexOf(bob);
-    let selecionada = saidaAtual.zeradas.includes(indexReal);
-    if (selecionada) totalSelecionado += bob.qtd;
-
-    let classe = '';
-    if (selecionada) {
-      classe = 'bobina-marcada';
-    }
-
-    html += `
-      <tr class="${classe}">
-        <td>
-          <input
-            type="radio"
-            ${selecionada ? 'checked' : ''}
-            onclick="selecionarBobinaSaida(${indexReal})"
-            style="width:18px;height:18px;margin:0;cursor:pointer;"
-          >
-        </td>
-        <td style="font-size:14px;"><strong>${idx + 1}</strong></td>
-        <td style="font-size:13px;">${bob.data}</td>
-        <td style="font-size:15px;"><strong>${formatarPeso(bob.qtd)}</strong></td>
-      </tr>
-    `;
-  });
-
-  tbody.innerHTML = html;
-
-  let diferenca = totalSelecionado - opPeso;
-
-  // ===== TÍTULO =====
-  let titulo = document.getElementById('modalSaidaTitulo');
-  let partes = saidaAtual.identificador.split(' - V');
-  let item = partes[0];
-  let versao = partes[1] || '';
-  let tipo = descobrirTipoPorItem(item);
-
-  let corTipo = '#64748b', fundoTipo = '#f1f5f9';
-  if (tipo === 'brf') { corTipo = '#1d4ed8'; fundoTipo = '#dbeafe'; }
-  else if (tipo === 'tampas') { corTipo = '#15803d'; fundoTipo = '#dcfce7'; }
-  else if (tipo === 'laminacao') { corTipo = '#c2410c'; fundoTipo = '#ffedd5'; }
-
-  let iconeAtivo = modoSugestao === 'peso' ? '⚖️' : '📅';
-  let tooltipAtivo = modoSugestao === 'peso' ? 'Modo: melhor peso' : 'Modo: mais antigas';
-
-  titulo.innerHTML = `
-    <div style="
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      width:100%;
-      gap:6px;
-    ">
-      <div style="
-        display:flex;
-        align-items:center;
-        gap:6px;
-        line-height:1.2;
-        overflow:hidden;
-      ">
-        <span style="
-          display:inline-flex;
-          align-items:center;
-          padding:2px 7px;
-          border-radius:999px;
-          font-size:10px;
-          font-weight:700;
-          letter-spacing:0.3px;
-          background:${fundoTipo};
-          color:${corTipo};
-          white-space:nowrap;
-          flex-shrink:0;
-        ">${nomeBonitoTipo(tipo)}</span>
-
-        <span style="
-          font-size:15px;
-          font-weight:700;
-          color:#0f172a;
-          white-space:nowrap;
-          overflow:hidden;
-          text-overflow:ellipsis;
-        ">${item}</span>
-
-        <span style="
-          display:inline-flex;
-          align-items:center;
-          padding:2px 6px;
-          border-radius:999px;
-          font-size:11px;
-          font-weight:700;
-          background:#e2e8f0;
-          color:#475569;
-          flex-shrink:0;
-        ">V${versao}</span>
-      </div>
-
-      <button onclick="alternarModoSugestao()" title="${tooltipAtivo}" style="
-        width:32px;
-        height:32px;
-        padding:0;
-        border:1px solid #e2e8f0;
-        border-radius:8px;
-        background:#f8fafc;
-        cursor:pointer;
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        font-size:16px;
-        flex-shrink:0;
-        transition:transform 0.1s ease;
-      ">${iconeAtivo}</button>
-    </div>
-  `;
-
-  // ===== STATUS =====
-  let statusTexto = '';
-  let statusCor = '#dc2626';
-
-  if (totalSelecionado === 0) {
-    statusTexto = `${formatarPeso(0)} / ${formatarPeso(opPeso)}`;
-    statusCor = '#dc2626';
-  } else {
-    if (diferenca === 0) {
-      statusTexto = `${formatarPeso(totalSelecionado)} / ${formatarPeso(opPeso)}`;
-      statusCor = '#16a34a';
-    } else if (diferenca > 0) {
-      statusTexto = `${formatarPeso(totalSelecionado)} / ${formatarPeso(opPeso)} (+${formatarPeso(diferenca)} kg)`;
-      statusCor = '#16a34a';
-    } else {
-      statusTexto = `${formatarPeso(totalSelecionado)} / ${formatarPeso(opPeso)} (-${formatarPeso(Math.abs(diferenca))} kg)`;
-      statusCor = '#dc2626';
-    }
-  }
-
-  // ===== BLOCO SUGESTÕES =====
-  let containerStatus = document.getElementById('saidaStatusContainer');
-  let headerSaida = document.querySelector('#modalSaida .modal-saida-header');
-
-  if (!containerStatus) {
-    containerStatus = document.createElement('div');
-    containerStatus.id = 'saidaStatusContainer';
-
-    let restanteAntigo = document.getElementById('modalSaidaRestante');
-    if (restanteAntigo) restanteAntigo.style.display = 'none';
-
-    if (headerSaida) {
-      headerSaida.style.paddingBottom = '4px';
-      headerSaida.insertAdjacentElement('afterend', containerStatus);
-    }
-  }
-
-  containerStatus.style.cssText = `
-    width:100%;
-    margin:4px 0 6px;
-    display:flex;
-    flex-direction:column;
-    gap:4px;
-    border-bottom:1px solid #e2e8f0;
-    padding-bottom:8px;
-  `;
-
-  // Botões de navegação
-  let navHtml = '';
-  if (saidaAtual.combinacoes.length > 1) {
-    navHtml = `
-      <button onclick="combinacaoAnterior()" style="
-        width:28px;
-        height:28px;
-        padding:0;
-        border:none;
-        border-radius:6px;
-        background:#1e3a8a;
-        color:#ffffff;
-        cursor:pointer;
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        font-size:12px;
-        font-weight:700;
-        flex-shrink:0;
-      ">◀</button>
-
-      <span style="
-        font-size:12px;
-        font-weight:600;
-        color:#64748b;
-        min-width:30px;
-        text-align:center;
-        font-variant-numeric:tabular-nums;
-        flex-shrink:0;
-      ">${saidaAtual.comboAtual + 1}/${saidaAtual.combinacoes.length}</span>
-
-      <button onclick="proximaCombinacao()" style="
-        width:28px;
-        height:28px;
-        padding:0;
-        border:none;
-        border-radius:6px;
-        background:#1e3a8a;
-        color:#ffffff;
-        cursor:pointer;
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        font-size:12px;
-        font-weight:700;
-        flex-shrink:0;
-      ">▶</button>
-    `;
-  }
-
-      let totalBobinas = saidaAtual.bobinas.length;
-  let selecionadas = saidaAtual.zeradas.length;
-
-  let labelModo = modoSugestao === 'peso' ? 'Sugestões por peso:' : 'Sugestões por idade:';
-
-  let labelSugestao = `
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
-      <span style="font-size:11px; color:#94a3b8; font-weight:500;">
-        ${saidaAtual.combinacoes.length > 1 ? labelModo : ''}
-      </span>
-      <span style="font-size:12px; font-weight:600; color:${selecionadas > 0 ? '#1e3a8a' : '#94a3b8'};">
-        ${selecionadas} / ${totalBobinas} bobinas
-      </span>
-    </div>
-  `;
-
-  containerStatus.innerHTML = `
-    ${labelSugestao}
-    <div style="
-      display:flex;
-      align-items:center;
-      justify-content:flex-end;
-      width:100%;
-      gap:6px;
-    ">
-      <div style="
-        font-size:15px;
-        font-weight:700;
-        color:${statusCor};
-        font-variant-numeric:tabular-nums;
-        white-space:nowrap;
-      ">${statusTexto}</div>
-
-      <div style="
-        display:flex;
-        align-items:center;
-        gap:4px;
-        flex-shrink:0;
-      ">
-        ${navHtml}
-      </div>
-    </div>
-  `;
-
-  // Botão desmarcar no cabeçalho da tabela
-  let thDesmarcar = document.getElementById('thDesmarcar');
-  if (thDesmarcar) {
-    if (selecionadas > 0) {
-      thDesmarcar.innerHTML = `<input type="radio" checked onclick="desmarcarTodasBobinas()" style="width:18px;height:18px;margin:0;cursor:pointer;" title="Desmarcar todas">`;
-    } else {
-      thDesmarcar.innerHTML = '';
-    }
-  }
-}
-
-function selecionarBobinaSaida(indexReal) {
-  let bob = historico[indexReal];
-  if (!bob) return;
-
-  let pos = saidaAtual.zeradas.indexOf(indexReal);
-  if (pos !== -1) {
-    saidaAtual.zeradas.splice(pos, 1);
-    delete saidaAtual.descontos[indexReal];
-  } else {
-    saidaAtual.descontos[indexReal] = bob.qtd;
-    saidaAtual.zeradas.push(indexReal);
-  }
-
-  renderizarBobinasSaida();
-}
-
-function desmarcarTodasBobinas() {
-  saidaAtual.descontos = {};
-  saidaAtual.zeradas = [];
-  renderizarBobinasSaida();
-}
-
-window.desmarcarTodasBobinas = desmarcarTodasBobinas;
-
-function confirmarSaida() {
-  if (saidaAtual.zeradas.length === 0) {
-    mostrarToast('Selecione pelo menos uma bobina', 'erro');
-    return;
-  }
-
-  let totalSelecionado = saidaAtual.zeradas.reduce((acc, idx) => acc + (historico[idx] ? historico[idx].qtd : 0), 0);
-
-  if (totalSelecionado < saidaAtual.pesoTotal) {
-    if (!confirm('Peso selecionado (' + Math.round(totalSelecionado) + ' kg) é menor que o pedido (' + Math.round(saidaAtual.pesoTotal) + ' kg).\n\nConfirmar mesmo assim?')) return;
-  }
-
-  processarZeradas(0);
-}
-
-function processarZeradas(indice) {
-  if (indice >= saidaAtual.zeradas.length) { finalizarSaida(); return; }
-  bobinaZeradaAtual = { indexReal: saidaAtual.zeradas[indice], indiceZerada: indice };
-  let bob = historico[bobinaZeradaAtual.indexReal];
-  document.getElementById('modalZerouTexto').textContent = 'Bobina #' + (saidaAtual.bobinas.indexOf(bob)+1) + ' — ' + Math.round(bob.qtd) + ' kg';
-  document.getElementById('modalZerou').classList.remove('hidden');
-}
-
-function zerouConsumir() {
-  historico[bobinaZeradaAtual.indexReal]._consumir = true;
-  document.getElementById('modalZerou').classList.add('hidden');
-  processarZeradas(bobinaZeradaAtual.indiceZerada + 1);
-}
-
-function zerouExcluir() {
-  historico[bobinaZeradaAtual.indexReal]._excluir = true;
-  document.getElementById('modalZerou').classList.add('hidden');
-  processarZeradas(bobinaZeradaAtual.indiceZerada + 1);
-}
-
-function finalizarSaida() {
-  salvarEstadoParaDesfazer();
-
-  let bobsConsumidas = saidaAtual.zeradas.filter(idx => historico[idx] && historico[idx]._consumir);
-  let bobsExcluidas = saidaAtual.zeradas.filter(idx => historico[idx] && historico[idx]._excluir);
-
-  let partesMsg = saidaAtual.identificador.split(" - V");
-  let itemNome = partesMsg[0], versaoNome = partesMsg[1];
-  let mensagemFinal = "";
-  let totalSaiu = 0;
-
-  // Processar consumidas
-  bobsConsumidas.forEach(idx => {
-    let bob = historico[idx];
-    if (!bob) return;
-    bob.consumida = true;
-    totalSaiu += bob.qtd;
-    historico.push({
-      id: crypto.randomUUID(),
-      data: new Date().toLocaleString(),
-      tipo: 'Consumo',
-      item: saidaAtual.identificador,
-      qtd: bob.qtd,
-      refEntradaId: bob.id,
-      refEntradaData: bob.data
-    });
-    mensagemFinal += "Bobina consumida (" + itemNome + ", V" + versaoNome + ", " + Math.round(bob.qtd) + "kg)\n";
-    delete bob._consumir;
-  });
-
-  // Processar excluídas
-  bobsExcluidas.forEach(idx => {
-    let bob = historico[idx];
-    if (!bob) return;
-    bob._removidaEstoque = true;
-    totalSaiu += bob.qtd;
-    historico.push({
-      id: crypto.randomUUID(),
-      data: new Date().toLocaleString(),
-      tipo: 'Exclusão',
-      item: saidaAtual.identificador,
-      qtd: bob.qtd,
-      refEntradaId: bob.id,
-      refEntradaData: bob.data
-    });
-    mensagemFinal += "Bobina excluída (" + itemNome + ", V" + versaoNome + ", " + Math.round(bob.qtd) + "kg)\n";
-    delete bob._excluir;
-  });
-
-  // Atualizar estoque
-  if (estoque[saidaAtual.identificador]) {
-    estoque[saidaAtual.identificador] -= totalSaiu;
-    let qtdKey = saidaAtual.identificador + '_qtd';
-    if (estoque[qtdKey]) {
-      estoque[qtdKey] -= saidaAtual.zeradas.length;
-      if (estoque[qtdKey] < 0) estoque[qtdKey] = 0;
-    }
-    if (estoque[saidaAtual.identificador] <= 0) {
-      delete estoque[saidaAtual.identificador];
-      delete estoque[saidaAtual.identificador + '_qtd'];
-    }
-  }
-
-  // Limpar flags temporárias
-  for (let i = historico.length - 1; i >= 0; i--) {
-    if (!historico[i]) continue;
-    if (historico[i]._excluir) delete historico[i]._excluir;
-    if (historico[i]._consumir) delete historico[i]._consumir;
-  }
-
-  salvarDados();
-  atualizarTabela();
-  atualizarHistorico();
-  document.getElementById('modalSaida').classList.add('hidden');
-
-  tipoSelect.value = '';
-  itemSelect.innerHTML = '<option value="">Selecionar item</option>';
-  versaoSelect.innerHTML = '<option value="">Selecionar versão</option>';
-  quantidade.value = '';
-  document.getElementById('buscaItem').value = '';
-  if (saldoAtual) saidaAtual.innerHTML = "";
-
-  if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-  mostrarToast('Saída aplicada — ' + Math.round(totalSaiu) + ' kg');
-  setTimeout(function() { if (mensagemFinal) alert(mensagemFinal); }, 150);
-}
-
-function cancelarSaida() {
-  saidaAtual = { identificador: null, pesoTotal: 0, pesoRestante: 0, bobinas: [], descontos: {}, zeradas: [] };
-  document.getElementById('modalSaida').classList.add('hidden');
-}
-
-/* ================= LONG PRESS LIMPAR TUDO ================= */
-
-document.addEventListener("DOMContentLoaded", function() {
-  configurarLongPress(document.getElementById('btnLimparEstoque'), function() {
-    if (!confirm("⚠️ ATENÇÃO!\n\nDeseja excluir TODO o estoque?\n\nAs exclusões serão registradas no histórico.")) return;
-    salvarEstadoParaDesfazer();
-    let alterou = excluirTodoEstoqueComHistorico();
-    salvarDados();
-    atualizarTabela();
-    atualizarHistorico();
-    if (tipoDetalheAtual) atualizarDetalhes();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-    if (alterou) mostrarToast('Estoque excluído');
-    else mostrarToast('Nenhum item no estoque', 'erro');
-  });
-
-  configurarLongPress(document.getElementById('btnLimparHistorico'), function() {
-    if (!confirm("⚠️ ATENÇÃO!\n\nDeseja limpar o histórico?\n\nRegistros de bobinas que ainda estão no estoque serão mantidos.")) return;
-    historico = historico.filter(h => h.tipo === "Entrada" && !h.consumida && !h._removidaEstoque && estoque[h.item] > 0);
-    salvarDados();
-    atualizarHistorico();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-    mostrarToast('Histórico limpo');
-  });
-
-  configurarLongPress(document.getElementById('btnLimparDetalhes'), function() {
-    if (!tipoDetalheAtual) return;
-    let nomeTipo = nomeCompletoTipo(tipoDetalheAtual);
-    if (!confirm("⚠️ ATENÇÃO!\n\nDeseja excluir todo o estoque de " + nomeTipo + "?\n\nAs exclusões serão registradas no histórico.")) return;
-    salvarEstadoParaDesfazer();
-    let alterou = excluirEstoquePorTipoComHistorico(tipoDetalheAtual);
-    salvarDados();
-    atualizarTabela();
-    atualizarHistorico();
-    atualizarDetalhes();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-    if (alterou) mostrarToast(nomeTipo + ' excluído');
-    else mostrarToast('Nenhum item de ' + nomeTipo, 'erro');
-  });
-
-  let btnLimparFiltro = document.getElementById("btnLimparFiltro");
-  if (btnLimparFiltro) {
-    btnLimparFiltro.addEventListener("click", function() {
-      document.getElementById("dataInicio").value = "";
-      document.getElementById("dataFim").value = "";
-      document.getElementById("buscaHistorico").value = "";
-      atualizarHistorico();
-    });
-  }
-
-  let modalGer = document.getElementById('modalGerador');
-  if (modalGer) {
-    modalGer.addEventListener('click', function(e) {
-      if (e.target === this) geradorFecharSimples();
-    });
-  }
-
-  let modalPend = document.getElementById('modalPendentes');
-  if (modalPend) {
-    modalPend.addEventListener('click', function(e) {
-      if (e.target === this) fecharPendentes();
-    });
-  }
-});
-
-/* ================= REMOVER HISTÓRICO ================= */
-
-window.removerHistorico = function(i) {
-  let registro = historico[i];
-  if (!registro) return;
-  if (registro.tipo === "Entrada" && !registro.consumida && !registro._removidaEstoque && estoque[registro.item] && estoque[registro.item] > 0) {
-    if (confirm("❌ Não é permitido excluir uma entrada ativa no estoque.\n\nDeseja localizar esta bobina nos detalhes do tipo?")) {
-      irParaBobinaNosDetalhes(registro, i);
-    }
-    return;
-  }
-  if (!confirm("Tem certeza que deseja remover este registro do histórico?")) return;
-  salvarEstadoParaDesfazer();
-  historico.splice(i, 1);
-  salvarDados();
-  atualizarHistorico();
-  mostrarToast('Registro removido');
-};
-
-/* ================= MENU CONFIGURAÇÕES ================= */
-
-function configOcultarTodasAsTelas() {
-  ['configMenuPrincipal', 'configTelaExportar', 'configTelaBackup', 'configTelaCadastro'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.add('hidden');
-    el.style.display = 'none';
-  });
-}
-
-function configMostrarTela(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.remove('hidden');
-  el.style.display = 'flex';
-  el.style.flexDirection = 'column';
-  el.style.gap = '8px';
-}
-
-function abrirModalConfig() {
-  const modal = document.getElementById('modalConfig');
-  if (!modal) return;
-  modal.removeAttribute('style');
-  modal.classList.remove('hidden');
-  voltarConfigPrincipal();
-}
-
-function fecharModalConfig() {
-  const modal = document.getElementById('modalConfig');
-  if (!modal) return;
-  modal.classList.add('hidden');
-}
-
-function voltarConfigPrincipal() {
-  const titulo = document.getElementById('configTitulo');
-  if (titulo) titulo.textContent = 'Configurações';
-
-  configOcultarTodasAsTelas();
-  configMostrarTela('configMenuPrincipal');
-}
-
-function abrirConfigExportar() {
-  const titulo = document.getElementById('configTitulo');
-  if (titulo) titulo.textContent = 'Exportar dados';
-
-  configOcultarTodasAsTelas();
-  configMostrarTela('configTelaExportar');
-
-  if (typeof resetarMenuExportar === 'function') resetarMenuExportar();
-}
-
-function abrirConfigBackup() {
-  const titulo = document.getElementById('configTitulo');
-  if (titulo) titulo.textContent = 'Backup / Restaurar';
-
-  configOcultarTodasAsTelas();
-  configMostrarTela('configTelaBackup');
-}
-
-function abrirConfigCadastro() {
-  const titulo = document.getElementById('configTitulo');
-  if (titulo) titulo.textContent = 'Gerenciar cadastro';
-
-  configOcultarTodasAsTelas();
-  configMostrarTela('configTelaCadastro');
-
-  if (typeof renderizarCadastro === 'function') renderizarCadastro();
-}
-
-function alternarModoEscuro() {
-  document.body.classList.toggle('dark-mode');
-  let ativo = document.body.classList.contains('dark-mode');
-  localStorage.setItem('modoEscuro', ativo);
-
-  let toggle = document.getElementById('darkModeToggle');
-  if (toggle) toggle.checked = ativo;
-
-  let icone = document.getElementById('darkModeIcon');
-  if (icone) icone.textContent = ativo ? '☀️' : '🌙';
-}
-
 /* ================= SISTEMA DE DESFAZER / REFAZER ================= */
 
 let pilhaDesfazer = [];
@@ -2855,6 +1972,566 @@ function atualizarBotoesDesfazerRefazer() {
   }
 }
 
+/* ================= SAÍDA COM SELEÇÃO DE BOBINAS ================= */
+
+let modoSugestao = 'peso';
+let saidaAtual = { identificador: null, pesoTotal: 0, pesoRestante: 0, bobinas: [], descontos: {}, zeradas: [], combinacoes: [], comboAtual: 0 };
+let bobinaZeradaAtual = null;
+
+function encontrarMelhorCombinacao(bobinas, pesoAlvo) {
+  return encontrarTodasCombinacoes(bobinas, pesoAlvo)[0] || [];
+}
+
+function alternarModoSugestao() {
+  modoSugestao = modoSugestao === 'peso' ? 'idade' : 'peso';
+  recalcularSugestoes();
+}
+
+function recalcularSugestoes() {
+  if (modoSugestao === 'idade') {
+    let pesoAlvo = saidaAtual.pesoTotal;
+    let bobinas = saidaAtual.bobinas;
+
+    let indicesOrdenados = bobinas.map((bob, idx) => {
+      let dataString = bob.dataProducao || bob.data;
+      let timestampOrdenacao = "99999999999999";
+      if (dataString) {
+        let partes = dataString.split(", ");
+        if (partes.length > 0) {
+          let dma = partes[0].split("/");
+          if (dma.length === 3) {
+            let ano = dma[2], mes = dma[1].padStart(2,'0'), dia = dma[0].padStart(2,'0');
+            let hora = "000000";
+            if (partes[1]) hora = partes[1].replace(/:/g, "").padEnd(6,'0');
+            timestampOrdenacao = ano + mes + dia + hora;
+          }
+        }
+      }
+      return { idx: idx, ts: timestampOrdenacao };
+    });
+
+    indicesOrdenados.sort((a, b) => a.ts.localeCompare(b.ts));
+    let ordemIdade = indicesOrdenados.map(o => o.idx);
+
+    let combo1 = [], soma1 = 0;
+    for (let i = 0; i < ordemIdade.length; i++) {
+      combo1.push(ordemIdade[i]);
+      soma1 += bobinas[ordemIdade[i]].qtd;
+      if (soma1 >= pesoAlvo) break;
+    }
+
+    let combo2 = combo1.length > 1 ? combo1.slice(0, -1) : [];
+
+    let combo3 = [...combo1];
+    let usados = new Set(combo3);
+    for (let i = 0; i < ordemIdade.length; i++) {
+      if (!usados.has(ordemIdade[i])) { combo3.push(ordemIdade[i]); break; }
+    }
+
+    let candidatas = [
+      { indices: combo1, soma: combo1.reduce((a, i) => a + bobinas[i].qtd, 0) },
+      { indices: combo2, soma: combo2.reduce((a, i) => a + bobinas[i].qtd, 0) },
+      { indices: combo3, soma: combo3.reduce((a, i) => a + bobinas[i].qtd, 0) }
+    ];
+    candidatas.forEach(c => { c.diffAbs = Math.abs(c.soma - pesoAlvo); });
+
+    let combos = [], chaves = new Set();
+    candidatas.forEach(c => {
+      if (c.indices.length === 0) return;
+      let ch = Math.round(c.soma) + '|' + c.indices.length;
+      if (!chaves.has(ch)) { chaves.add(ch); combos.push(c); }
+    });
+    combos.sort((a, b) => {
+      if (a.diffAbs !== b.diffAbs) return a.diffAbs - b.diffAbs;
+      return a.indices.length - b.indices.length;
+    });
+    saidaAtual.combinacoes = combos.slice(0, 3).map(c => c.indices);
+  } else {
+    saidaAtual.combinacoes = encontrarTodasCombinacoes(saidaAtual.bobinas, saidaAtual.pesoTotal);
+  }
+
+  saidaAtual.comboAtual = 0;
+  saidaAtual.descontos = {};
+  saidaAtual.zeradas = [];
+
+  if (saidaAtual.combinacoes.length > 0) {
+    saidaAtual.combinacoes[0].forEach(idx => {
+      let indexReal = historico.indexOf(saidaAtual.bobinas[idx]);
+      saidaAtual.descontos[indexReal] = saidaAtual.bobinas[idx].qtd;
+      saidaAtual.zeradas.push(indexReal);
+    });
+  }
+  renderizarBobinasSaida();
+}
+
+window.alternarModoSugestao = alternarModoSugestao;
+
+function encontrarTodasCombinacoes(bobinas, pesoAlvo) {
+  let n = bobinas.length;
+  let todas = [];
+
+  if (n <= 20) {
+    let totalCombinacoes = Math.pow(2, n);
+    for (let mask = 1; mask < totalCombinacoes; mask++) {
+      let soma = 0, indices = [];
+      for (let i = 0; i < n; i++) {
+        if (mask & (1 << i)) { soma += bobinas[i].qtd; indices.push(i); }
+      }
+      todas.push({ indices, soma, diffAbs: Math.abs(soma - pesoAlvo) });
+    }
+  } else {
+    let ordenadas = bobinas.map((b, i) => ({ idx: i, peso: b.qtd })).sort((a, b) => b.peso - a.peso);
+    let tentativas = [];
+    let soma1 = 0, idx1 = [];
+    for (let b of ordenadas) { idx1.push(b.idx); soma1 += b.peso; if (soma1 >= pesoAlvo) break; }
+    tentativas.push({ indices: idx1, soma: soma1, diffAbs: Math.abs(soma1 - pesoAlvo) });
+    let asc = [...ordenadas].reverse();
+    let soma2 = 0, idx2 = [];
+    for (let b of asc) { idx2.push(b.idx); soma2 += b.peso; if (soma2 >= pesoAlvo) break; }
+    tentativas.push({ indices: idx2, soma: soma2, diffAbs: Math.abs(soma2 - pesoAlvo) });
+    let soma3 = 0, idx3 = [];
+    for (let i = 1; i < ordenadas.length; i++) { idx3.push(ordenadas[i].idx); soma3 += ordenadas[i].peso; if (soma3 >= pesoAlvo) break; }
+    if (idx3.length) tentativas.push({ indices: idx3, soma: soma3, diffAbs: Math.abs(soma3 - pesoAlvo) });
+    todas = tentativas;
+  }
+
+  todas.sort((a, b) => {
+    if (a.diffAbs !== b.diffAbs) return a.diffAbs - b.diffAbs;
+    if (a.indices.length !== b.indices.length) return a.indices.length - b.indices.length;
+    return a.soma - b.soma;
+  });
+
+  let unicas = [], vistas = new Set();
+  todas.forEach(combo => {
+    let chave = Math.round(combo.soma) + '|' + combo.indices.length;
+    if (!vistas.has(chave)) { vistas.add(chave); unicas.push(combo); }
+  });
+  return unicas.slice(0, 3).map(c => c.indices);
+}
+
+function abrirModalSaida(identificador, pesoSaida) {
+  saidaAtual.identificador = identificador;
+  saidaAtual.pesoTotal = pesoSaida;
+  saidaAtual.pesoRestante = pesoSaida;
+  saidaAtual.descontos = {};
+  saidaAtual.zeradas = [];
+
+  let entradas = historico.filter(h => h.item === identificador && h.tipo === "Entrada" && !h.consumida && !h._removidaEstoque);
+  let pesoAtual = estoque[identificador] || 0;
+  let bobinas = [], soma = 0;
+  for (let i = entradas.length - 1; i >= 0; i--) {
+    if (soma >= pesoAtual) break;
+    bobinas.unshift(entradas[i]);
+    soma += entradas[i].qtd;
+  }
+  saidaAtual.bobinas = bobinas;
+  saidaAtual.combinacoes = encontrarTodasCombinacoes(bobinas, pesoSaida);
+  saidaAtual.comboAtual = 0;
+  aplicarCombinacao(0);
+  document.getElementById('modalSaidaTitulo').textContent = identificador;
+  renderizarBobinasSaida();
+  document.getElementById('modalSaida').classList.remove('hidden');
+}
+
+function aplicarCombinacao(indice) {
+  if (indice < 0 || indice >= saidaAtual.combinacoes.length) return;
+  saidaAtual.comboAtual = indice;
+  saidaAtual.descontos = {};
+  saidaAtual.zeradas = [];
+  saidaAtual.combinacoes[indice].forEach(idx => {
+    let indexReal = historico.indexOf(saidaAtual.bobinas[idx]);
+    saidaAtual.descontos[indexReal] = saidaAtual.bobinas[idx].qtd;
+    saidaAtual.zeradas.push(indexReal);
+  });
+  renderizarBobinasSaida();
+}
+
+function proximaCombinacao() {
+  let proximo = saidaAtual.comboAtual + 1;
+  if (proximo >= saidaAtual.combinacoes.length) proximo = 0;
+  aplicarCombinacao(proximo);
+}
+
+function combinacaoAnterior() {
+  let anterior = saidaAtual.comboAtual - 1;
+  if (anterior < 0) anterior = saidaAtual.combinacoes.length - 1;
+  aplicarCombinacao(anterior);
+}
+
+window.proximaCombinacao = proximaCombinacao;
+window.combinacaoAnterior = combinacaoAnterior;
+
+function renderizarBobinasSaida() {
+  let tbody = document.getElementById('modalSaidaBody');
+  let html = '';
+  let totalSelecionado = 0;
+  let opPeso = Math.round(saidaAtual.pesoTotal);
+
+  saidaAtual.bobinas.forEach((bob, idx) => {
+    let indexReal = historico.indexOf(bob);
+    let selecionada = saidaAtual.zeradas.includes(indexReal);
+    if (selecionada) totalSelecionado += bob.qtd;
+    html += `
+      <tr class="${selecionada ? 'bobina-marcada' : ''}">
+        <td>
+          <input type="radio" ${selecionada ? 'checked' : ''} onclick="selecionarBobinaSaida(${indexReal})"
+            style="width:18px;height:18px;margin:0;cursor:pointer;">
+        </td>
+        <td style="font-size:14px;"><strong>${idx + 1}</strong></td>
+        <td style="font-size:13px;">${bob.data}</td>
+        <td style="font-size:15px;"><strong>${formatarPeso(bob.qtd)}</strong></td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+
+  let diferenca = totalSelecionado - opPeso;
+  let titulo = document.getElementById('modalSaidaTitulo');
+  let partes = saidaAtual.identificador.split(' - V');
+  let item = partes[0], versao = partes[1] || '';
+  let tipo = descobrirTipoPorItem(item);
+
+  let corTipo = '#64748b', fundoTipo = '#f1f5f9';
+  if (tipo === 'brf') { corTipo = '#1d4ed8'; fundoTipo = '#dbeafe'; }
+  else if (tipo === 'tampas') { corTipo = '#15803d'; fundoTipo = '#dcfce7'; }
+  else if (tipo === 'laminacao') { corTipo = '#c2410c'; fundoTipo = '#ffedd5'; }
+
+  let iconeAtivo = modoSugestao === 'peso' ? '⚖️' : '📅';
+  let tooltipAtivo = modoSugestao === 'peso' ? 'Modo: melhor peso' : 'Modo: mais antigas';
+
+  titulo.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:6px;">
+      <div style="display:flex;align-items:center;gap:6px;line-height:1.2;overflow:hidden;">
+        <span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.3px;background:${fundoTipo};color:${corTipo};white-space:nowrap;flex-shrink:0;">${nomeBonitoTipo(tipo)}</span>
+        <span style="font-size:15px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item}</span>
+        <span style="display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;font-size:11px;font-weight:700;background:#e2e8f0;color:#475569;flex-shrink:0;">V${versao}</span>
+      </div>
+      <button onclick="alternarModoSugestao()" title="${tooltipAtivo}" style="width:32px;height:32px;padding:0;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">${iconeAtivo}</button>
+    </div>
+  `;
+
+  let statusTexto = '', statusCor = '#dc2626';
+  if (totalSelecionado === 0) {
+    statusTexto = `${formatarPeso(0)} / ${formatarPeso(opPeso)}`;
+  } else if (diferenca === 0) {
+    statusTexto = `${formatarPeso(totalSelecionado)} / ${formatarPeso(opPeso)}`;
+    statusCor = '#16a34a';
+  } else if (diferenca > 0) {
+    statusTexto = `${formatarPeso(totalSelecionado)} / ${formatarPeso(opPeso)} (+${formatarPeso(diferenca)} kg)`;
+    statusCor = '#16a34a';
+  } else {
+    statusTexto = `${formatarPeso(totalSelecionado)} / ${formatarPeso(opPeso)} (-${formatarPeso(Math.abs(diferenca))} kg)`;
+  }
+
+  let containerStatus = document.getElementById('saidaStatusContainer');
+  let headerSaida = document.querySelector('#modalSaida .modal-saida-header');
+  if (!containerStatus) {
+    containerStatus = document.createElement('div');
+    containerStatus.id = 'saidaStatusContainer';
+    let restanteAntigo = document.getElementById('modalSaidaRestante');
+    if (restanteAntigo) restanteAntigo.style.display = 'none';
+    if (headerSaida) { headerSaida.style.paddingBottom = '4px'; headerSaida.insertAdjacentElement('afterend', containerStatus); }
+  }
+
+  containerStatus.style.cssText = `width:100%;margin:4px 0 6px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;`;
+
+  let selecionadas = saidaAtual.zeradas.length;
+  let totalBobinas = saidaAtual.bobinas.length;
+  let labelModo = modoSugestao === 'peso' ? 'Sugestões por peso:' : 'Sugestões por idade:';
+
+  let navHtml = '';
+  if (saidaAtual.combinacoes.length > 1) {
+    navHtml = `
+      <button onclick="combinacaoAnterior()" style="width:28px;height:28px;padding:0;border:none;border-radius:6px;background:#1e3a8a;color:#ffffff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">◀</button>
+      <span style="font-size:12px;font-weight:600;color:#64748b;min-width:30px;text-align:center;flex-shrink:0;">${saidaAtual.comboAtual + 1}/${saidaAtual.combinacoes.length}</span>
+      <button onclick="proximaCombinacao()" style="width:28px;height:28px;padding:0;border:none;border-radius:6px;background:#1e3a8a;color:#ffffff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">▶</button>
+    `;
+  }
+
+  containerStatus.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+      <span style="font-size:11px;color:#94a3b8;font-weight:500;">${saidaAtual.combinacoes.length > 1 ? labelModo : ''}</span>
+      <span style="font-size:12px;font-weight:600;color:${selecionadas > 0 ? '#1e3a8a' : '#94a3b8'};">${selecionadas} / ${totalBobinas} bobinas</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;width:100%;gap:6px;">
+      <div style="font-size:15px;font-weight:700;color:${statusCor};font-variant-numeric:tabular-nums;white-space:nowrap;">${statusTexto}</div>
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">${navHtml}</div>
+    </div>
+  `;
+
+  let thDesmarcar = document.getElementById('thDesmarcar');
+  if (thDesmarcar) {
+    if (selecionadas > 0) {
+      thDesmarcar.innerHTML = `<input type="radio" checked onclick="desmarcarTodasBobinas()" style="width:18px;height:18px;margin:0;cursor:pointer;" title="Desmarcar todas">`;
+    } else {
+      thDesmarcar.innerHTML = '';
+    }
+  }
+}
+
+function selecionarBobinaSaida(indexReal) {
+  let bob = historico[indexReal];
+  if (!bob) return;
+  let pos = saidaAtual.zeradas.indexOf(indexReal);
+  if (pos !== -1) { saidaAtual.zeradas.splice(pos, 1); delete saidaAtual.descontos[indexReal]; }
+  else { saidaAtual.descontos[indexReal] = bob.qtd; saidaAtual.zeradas.push(indexReal); }
+  renderizarBobinasSaida();
+}
+
+function desmarcarTodasBobinas() {
+  saidaAtual.descontos = {};
+  saidaAtual.zeradas = [];
+  renderizarBobinasSaida();
+}
+window.desmarcarTodasBobinas = desmarcarTodasBobinas;
+
+function confirmarSaida() {
+  if (saidaAtual.zeradas.length === 0) { mostrarToast('Selecione pelo menos uma bobina', 'erro'); return; }
+  let totalSelecionado = saidaAtual.zeradas.reduce((acc, idx) => acc + (historico[idx] ? historico[idx].qtd : 0), 0);
+  if (totalSelecionado < saidaAtual.pesoTotal) {
+    if (!confirm('Peso selecionado (' + Math.round(totalSelecionado) + ' kg) é menor que o pedido (' + Math.round(saidaAtual.pesoTotal) + ' kg).\n\nConfirmar mesmo assim?')) return;
+  }
+  processarZeradas(0);
+}
+
+function processarZeradas(indice) {
+  if (indice >= saidaAtual.zeradas.length) { finalizarSaida(); return; }
+  bobinaZeradaAtual = { indexReal: saidaAtual.zeradas[indice], indiceZerada: indice };
+  let bob = historico[bobinaZeradaAtual.indexReal];
+  document.getElementById('modalZerouTexto').textContent = 'Bobina #' + (saidaAtual.bobinas.indexOf(bob)+1) + ' — ' + Math.round(bob.qtd) + ' kg';
+  document.getElementById('modalZerou').classList.remove('hidden');
+}
+
+function zerouConsumir() {
+  historico[bobinaZeradaAtual.indexReal]._consumir = true;
+  document.getElementById('modalZerou').classList.add('hidden');
+  processarZeradas(bobinaZeradaAtual.indiceZerada + 1);
+}
+
+function zerouExcluir() {
+  historico[bobinaZeradaAtual.indexReal]._excluir = true;
+  document.getElementById('modalZerou').classList.add('hidden');
+  processarZeradas(bobinaZeradaAtual.indiceZerada + 1);
+}
+
+function finalizarSaida() {
+  salvarEstadoParaDesfazer();
+  let bobsConsumidas = saidaAtual.zeradas.filter(idx => historico[idx] && historico[idx]._consumir);
+  let bobsExcluidas = saidaAtual.zeradas.filter(idx => historico[idx] && historico[idx]._excluir);
+  let partesMsg = saidaAtual.identificador.split(" - V");
+  let itemNome = partesMsg[0], versaoNome = partesMsg[1];
+  let mensagemFinal = "", totalSaiu = 0;
+
+  bobsConsumidas.forEach(idx => {
+    let bob = historico[idx];
+    if (!bob) return;
+    bob.consumida = true;
+    totalSaiu += bob.qtd;
+    historico.push({ id: crypto.randomUUID(), data: new Date().toLocaleString(), tipo: 'Consumo', item: saidaAtual.identificador, qtd: bob.qtd, refEntradaId: bob.id, refEntradaData: bob.data });
+    mensagemFinal += "Bobina consumida (" + itemNome + ", V" + versaoNome + ", " + Math.round(bob.qtd) + "kg)\n";
+    delete bob._consumir;
+  });
+
+  bobsExcluidas.forEach(idx => {
+    let bob = historico[idx];
+    if (!bob) return;
+    bob._removidaEstoque = true;
+    totalSaiu += bob.qtd;
+    historico.push({ id: crypto.randomUUID(), data: new Date().toLocaleString(), tipo: 'Exclusão', item: saidaAtual.identificador, qtd: bob.qtd, refEntradaId: bob.id, refEntradaData: bob.data });
+    mensagemFinal += "Bobina excluída (" + itemNome + ", V" + versaoNome + ", " + Math.round(bob.qtd) + "kg)\n";
+    delete bob._excluir;
+  });
+
+  if (estoque[saidaAtual.identificador]) {
+    estoque[saidaAtual.identificador] -= totalSaiu;
+    let qtdKey = saidaAtual.identificador + '_qtd';
+    if (estoque[qtdKey]) {
+      estoque[qtdKey] -= saidaAtual.zeradas.length;
+      if (estoque[qtdKey] < 0) estoque[qtdKey] = 0;
+    }
+    if (estoque[saidaAtual.identificador] <= 0) {
+      delete estoque[saidaAtual.identificador];
+      delete estoque[saidaAtual.identificador + '_qtd'];
+    }
+  }
+
+  for (let i = historico.length - 1; i >= 0; i--) {
+    if (!historico[i]) continue;
+    if (historico[i]._excluir) delete historico[i]._excluir;
+    if (historico[i]._consumir) delete historico[i]._consumir;
+  }
+
+  salvarDados();
+  atualizarTabela();
+  atualizarHistorico();
+  document.getElementById('modalSaida').classList.add('hidden');
+
+  tipoSelect.value = '';
+  itemSelect.innerHTML = '<option value="">Selecionar item</option>';
+  versaoSelect.innerHTML = '<option value="">Selecionar versão</option>';
+  quantidade.value = '';
+  document.getElementById('buscaItem').value = '';
+  if (saldoAtual) saldoAtual.innerHTML = "";
+
+  if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+  mostrarToast('Saída aplicada — ' + Math.round(totalSaiu) + ' kg');
+  setTimeout(function() { if (mensagemFinal) alert(mensagemFinal); }, 150);
+}
+
+function cancelarSaida() {
+  saidaAtual = { identificador: null, pesoTotal: 0, pesoRestante: 0, bobinas: [], descontos: {}, zeradas: [] };
+  document.getElementById('modalSaida').classList.add('hidden');
+}
+
+/* ================= LONG PRESS LIMPAR TUDO ================= */
+
+document.addEventListener("DOMContentLoaded", function() {
+  configurarLongPress(document.getElementById('btnLimparEstoque'), function() {
+    if (!confirm("⚠️ ATENÇÃO!\n\nDeseja excluir TODO o estoque?\n\nAs exclusões serão registradas no histórico.")) return;
+    salvarEstadoParaDesfazer();
+    let alterou = excluirTodoEstoqueComHistorico();
+    salvarDados(); atualizarTabela(); atualizarHistorico();
+    if (tipoDetalheAtual) atualizarDetalhes();
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    if (alterou) mostrarToast('Estoque excluído');
+    else mostrarToast('Nenhum item no estoque', 'erro');
+  });
+
+  configurarLongPress(document.getElementById('btnLimparHistorico'), function() {
+    if (!confirm("⚠️ ATENÇÃO!\n\nDeseja limpar o histórico?\n\nRegistros de bobinas que ainda estão no estoque serão mantidos.")) return;
+    historico = historico.filter(h => h.tipo === "Entrada" && !h.consumida && !h._removidaEstoque && estoque[h.item] > 0);
+    salvarDados(); atualizarHistorico();
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    mostrarToast('Histórico limpo');
+  });
+
+  configurarLongPress(document.getElementById('btnLimparDetalhes'), function() {
+    if (!tipoDetalheAtual) return;
+    let nomeTipo = nomeCompletoTipo(tipoDetalheAtual);
+    if (!confirm("⚠️ ATENÇÃO!\n\nDeseja excluir todo o estoque de " + nomeTipo + "?\n\nAs exclusões serão registradas no histórico.")) return;
+    salvarEstadoParaDesfazer();
+    let alterou = excluirEstoquePorTipoComHistorico(tipoDetalheAtual);
+    salvarDados(); atualizarTabela(); atualizarHistorico(); atualizarDetalhes();
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    if (alterou) mostrarToast(nomeTipo + ' excluído');
+    else mostrarToast('Nenhum item de ' + nomeTipo, 'erro');
+  });
+
+  let btnLimparFiltro = document.getElementById("btnLimparFiltro");
+  if (btnLimparFiltro) {
+    btnLimparFiltro.addEventListener("click", function() {
+      document.getElementById("dataInicio").value = "";
+      document.getElementById("dataFim").value = "";
+      document.getElementById("buscaHistorico").value = "";
+      atualizarHistorico();
+    });
+  }
+
+  let modalGer = document.getElementById('modalGerador');
+  if (modalGer) {
+    modalGer.addEventListener('click', function(e) { if (e.target === this) geradorFecharSimples(); });
+  }
+
+  let modalPend = document.getElementById('modalPendentes');
+  if (modalPend) {
+    modalPend.addEventListener('click', function(e) { if (e.target === this) fecharPendentes(); });
+  }
+});
+
+/* ================= REMOVER HISTÓRICO ================= */
+
+window.removerHistorico = function(i) {
+  let registro = historico[i];
+  if (!registro) return;
+  if (registro.tipo === "Entrada" && !registro.consumida && !registro._removidaEstoque && estoque[registro.item] && estoque[registro.item] > 0) {
+    if (confirm("❌ Não é permitido excluir uma entrada ativa no estoque.\n\nDeseja localizar esta bobina nos detalhes do tipo?")) {
+      irParaBobinaNosDetalhes(registro, i);
+    }
+    return;
+  }
+  if (!confirm("Tem certeza que deseja remover este registro do histórico?")) return;
+  salvarEstadoParaDesfazer();
+  historico.splice(i, 1);
+  salvarDados();
+  atualizarHistorico();
+  mostrarToast('Registro removido');
+};
+
+/* ================= MENU CONFIGURAÇÕES ================= */
+
+function configOcultarTodasAsTelas() {
+  ['configMenuPrincipal', 'configTelaExportar', 'configTelaBackup', 'configTelaCadastro'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('hidden');
+    el.style.display = 'none';
+  });
+}
+
+function configMostrarTela(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('hidden');
+  el.style.display = 'flex';
+  el.style.flexDirection = 'column';
+  el.style.gap = '8px';
+}
+
+function abrirModalConfig() {
+  const modal = document.getElementById('modalConfig');
+  if (!modal) return;
+  modal.removeAttribute('style');
+  modal.classList.remove('hidden');
+  voltarConfigPrincipal();
+}
+
+function fecharModalConfig() {
+  const modal = document.getElementById('modalConfig');
+  if (!modal) return;
+  modal.classList.add('hidden');
+}
+
+function voltarConfigPrincipal() {
+  const titulo = document.getElementById('configTitulo');
+  if (titulo) titulo.textContent = 'Configurações';
+  configOcultarTodasAsTelas();
+  configMostrarTela('configMenuPrincipal');
+}
+
+function abrirConfigExportar() {
+  const titulo = document.getElementById('configTitulo');
+  if (titulo) titulo.textContent = 'Exportar dados';
+  configOcultarTodasAsTelas();
+  configMostrarTela('configTelaExportar');
+  if (typeof resetarMenuExportar === 'function') resetarMenuExportar();
+}
+
+function abrirConfigBackup() {
+  const titulo = document.getElementById('configTitulo');
+  if (titulo) titulo.textContent = 'Backup / Restaurar';
+  configOcultarTodasAsTelas();
+  configMostrarTela('configTelaBackup');
+}
+
+function abrirConfigCadastro() {
+  const titulo = document.getElementById('configTitulo');
+  if (titulo) titulo.textContent = 'Gerenciar cadastro';
+  configOcultarTodasAsTelas();
+  configMostrarTela('configTelaCadastro');
+  if (typeof renderizarCadastro === 'function') renderizarCadastro();
+}
+
+function alternarModoEscuro() {
+  document.body.classList.toggle('dark-mode');
+  let ativo = document.body.classList.contains('dark-mode');
+  localStorage.setItem('modoEscuro', ativo);
+  let toggle = document.getElementById('darkModeToggle');
+  if (toggle) toggle.checked = ativo;
+  let icone = document.getElementById('darkModeIcon');
+  if (icone) icone.textContent = ativo ? '☀️' : '🌙';
+}
+
 /* ================= GERENCIAR CADASTRO ================= */
 
 window.abrirConfigCadastro = function() {
@@ -2868,8 +2545,7 @@ window.abrirConfigCadastro = function() {
 
 function renderizarCadastro() {
   let container = document.getElementById('cadastroAcordeao');
-  let tiposAbertos = [];
-  let itensAbertos = [];
+  let tiposAbertos = [], itensAbertos = [];
   container.querySelectorAll('.cad-tipo.aberto').forEach(el => { tiposAbertos.push(el.dataset.tipo); });
   container.querySelectorAll('.cad-item.aberto').forEach(el => { itensAbertos.push(el.dataset.tipo + '|' + el.dataset.item); });
   container.innerHTML = '';
@@ -2892,10 +2568,7 @@ function renderizarCadastro() {
 
     let header = document.createElement('button');
     header.className = 'cad-tipo-header';
-    header.innerHTML = `
-      <span>${tipo.nome} <span style="font-weight:400; font-size:12px; opacity:0.7;">(${itens.length} itens, ${totalVersoes} versões)</span></span>
-      <span class="cad-seta">▶</span>
-    `;
+    header.innerHTML = `<span>${tipo.nome} <span style="font-weight:400;font-size:12px;opacity:0.7;">(${itens.length} itens, ${totalVersoes} versões)</span></span><span class="cad-seta">▶</span>`;
     header.onclick = function() { divTipo.classList.toggle('aberto'); };
 
     let body = document.createElement('div');
@@ -2972,9 +2645,7 @@ window.adicionarItem = function(tipo) {
   nome = nome.trim();
   if (banco[tipo][nome]) { mostrarToast('Este item já existe!', 'erro'); return; }
   banco[tipo][nome] = {};
-  salvarBanco();
-  renderizarCadastro();
-  mostrarToast('Item adicionado');
+  salvarBanco(); renderizarCadastro(); mostrarToast('Item adicionado');
 };
 
 window.editarNomeItem = function(tipo, itemAntigo) {
@@ -3003,19 +2674,14 @@ window.editarNomeItem = function(tipo, itemAntigo) {
   }
   banco[tipo][novoNome] = banco[tipo][itemAntigo];
   delete banco[tipo][itemAntigo];
-  salvarBanco();
-  renderizarCadastro();
-  atualizarTudo();
-  mostrarToast('Item renomeado');
+  salvarBanco(); renderizarCadastro(); atualizarTudo(); mostrarToast('Item renomeado');
 };
 
 window.removerItem = function(tipo, item) {
   let versoes = Object.keys(banco[tipo][item]).length;
   if (!confirm("Excluir " + item + " e suas " + versoes + " versão(ões)?")) return;
   delete banco[tipo][item];
-  salvarBanco();
-  renderizarCadastro();
-  mostrarToast('Item excluído');
+  salvarBanco(); renderizarCadastro(); mostrarToast('Item excluído');
 };
 
 window.adicionarVersao = function(tipo, item) {
@@ -3026,9 +2692,7 @@ window.adicionarVersao = function(tipo, item) {
   let tamanho = prompt("Medidas (ex: 66 x 60):");
   if (!tamanho || !tamanho.trim()) return;
   banco[tipo][item][versao] = { tamanho: tamanho.trim() };
-  salvarBanco();
-  renderizarCadastro();
-  mostrarToast('Versão adicionada');
+  salvarBanco(); renderizarCadastro(); mostrarToast('Versão adicionada');
 };
 
 window.editarVersao = function(tipo, item, versao) {
@@ -3057,10 +2721,7 @@ window.editarVersao = function(tipo, item, versao) {
     delete banco[tipo][item][versao];
   }
   banco[tipo][item][novaVersao] = { tamanho: novoTamanho };
-  salvarBanco();
-  renderizarCadastro();
-  atualizarTudo();
-  mostrarToast('Versão atualizada');
+  salvarBanco(); renderizarCadastro(); atualizarTudo(); mostrarToast('Versão atualizada');
 };
 
 window.removerVersao = function(tipo, item, versao) {
@@ -3068,17 +2729,48 @@ window.removerVersao = function(tipo, item, versao) {
   delete banco[tipo][item][versao];
   if (Object.keys(banco[tipo][item]).length === 0) {
     delete banco[tipo][item];
-    salvarBanco();
-    renderizarCadastro();
-    mostrarToast('Versão e item excluídos');
+    salvarBanco(); renderizarCadastro(); mostrarToast('Versão e item excluídos');
     return;
   }
-  salvarBanco();
-  renderizarCadastro();
-  mostrarToast('Versão excluída');
+  salvarBanco(); renderizarCadastro(); mostrarToast('Versão excluída');
 };
 
-/* ================= QR CODE ================= */
+/* ================= QR CODE — NOVO FORMATO B1/id/item/versao/peso ================= */
+
+function formatarNovoQR(idCompleto, item, versao, peso) {
+  let idCurto = extrairIdCurtoBobina(idCompleto);
+  if (!idCurto) {
+    idCurto = idCompleto
+      ? String(idCompleto).replace(/-/g, '').substring(0, 8).toLowerCase()
+      : crypto.randomUUID().replace(/-/g, '').substring(0, 8);
+  }
+  return 'B1/' + idCurto + '/' + item + '/' + versao + '/' + Math.round(peso);
+}
+
+function extrairIdCurtoBobina(valor) {
+  if (!valor) return '';
+  let str = String(valor).trim().toLowerCase();
+
+  // Novo formato: B1/id/item/versao/peso
+  if (str.startsWith('b1/')) {
+    let partes = str.split('/');
+    if (partes.length >= 2 && partes[1].length === 8 && /^[a-f0-9]{8}$/.test(partes[1])) return partes[1];
+  }
+
+  // Formato antigo BOB/item/versao/peso/.../id
+  let semPrefixo = str.replace(/^bob\//i, '');
+  let partes = semPrefixo.split('/');
+  let ultima = partes[partes.length - 1] || '';
+  if (/^[a-f0-9]{8}$/i.test(ultima)) return ultima.toLowerCase();
+
+  // UUID completo
+  if (/^[a-f0-9-]{32,36}$/i.test(str)) return str.replace(/-/g, '').substring(0, 8).toLowerCase();
+
+  // ID curto isolado
+  if (/^[a-f0-9]{8}$/i.test(str)) return str.toLowerCase();
+
+  return '';
+}
 
 function gerarQRBobina(index) {
   let reg = historico[index];
@@ -3094,34 +2786,25 @@ function gerarQRBobina(index) {
     tamanho = banco[tipo][item][versao].tamanho;
   }
 
-  let dataQR = "", dataProducao = "";
+  let dataProducao = "";
   if (reg.data) {
     let partesData = reg.data.split(", ");
     if (partesData.length === 2) {
       let dma = partesData[0].split("/");
-      let hms = partesData[1].replace(/:/g, "");
-      if (dma.length === 3 && hms.length === 6) {
-        dataQR = dma[0] + dma[1] + dma[2] + "/" + hms;
+      if (dma.length === 3) {
         dataProducao = dma[0] + "/" + dma[1] + "/" + dma[2] + " às " + partesData[1];
       }
     }
   }
 
-  let idCurto = '';
-  if (reg.id && typeof reg.id === 'string') {
-    idCurto = reg.id.includes('-') ? reg.id.replace(/-/g, '').substring(0, 8) : reg.id.substring(0, 8);
-  }
-
-  let conteudoQR = 'BOB/' + item + "/" + versao + "/" + Math.round(reg.qtd);
-  if (dataQR) conteudoQR += "/" + dataQR;
-  if (idCurto) conteudoQR += "/" + idCurto;
+  // NOVO FORMATO
+  let conteudoQR = formatarNovoQR(reg.id, item, versao, reg.qtd);
 
   let container = document.getElementById("qrContainer");
   container.innerHTML = "";
 
-    // QR Code
   let qrWrapper = document.createElement("div");
-  qrWrapper.style.cssText = "display:flex; justify-content:center; padding:8px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0;";
+  qrWrapper.style.cssText = "display:flex;justify-content:center;padding:8px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;";
   container.appendChild(qrWrapper);
 
   new QRCode(qrWrapper, {
@@ -3133,48 +2816,35 @@ function gerarQRBobina(index) {
     correctLevel: QRCode.CorrectLevel.M
   });
 
-  // Informações — tudo numa linha + peso e data separados
   let corTipo = tipo === 'brf' ? '#3b82f6' : tipo === 'tampas' ? '#16a34a' : tipo === 'laminacao' ? '#ea580c' : '#64748b';
   let bgTipo = tipo === 'brf' ? '#dbeafe' : tipo === 'tampas' ? '#dcfce7' : tipo === 'laminacao' ? '#ffedd5' : '#f1f5f9';
 
   let infoDiv = document.createElement("div");
-  infoDiv.style.cssText = "text-align:center; margin-top:14px; display:flex; flex-direction:column; gap:6px;";
+  infoDiv.style.cssText = "text-align:center;margin-top:14px;display:flex;flex-direction:column;gap:6px;";
   infoDiv.innerHTML = `
-    <div style="font-size:14px; font-weight:600; color:#1e293b;">
-      <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; padding:2px 6px; border-radius:4px; background:${bgTipo}; color:${corTipo}; margin-right:6px;">${nomeCompletoTipo(tipo)}</span>
+    <div style="font-size:14px;font-weight:600;color:#1e293b;">
+      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;padding:2px 6px;border-radius:4px;background:${bgTipo};color:${corTipo};margin-right:6px;">${nomeCompletoTipo(tipo)}</span>
       ${item} · V${versao} · ${tamanho}
     </div>
-    <div style="font-size:22px; font-weight:800; color:#1e3a8a;">${Math.round(reg.qtd)} kg</div>
-    <div style="font-size:11px; color:#94a3b8;">📅 ${dataProducao ? dataProducao.replace(' às ', ' - ') : 'Sem data'}</div>
+    <div style="font-size:22px;font-weight:800;color:#1e3a8a;">${Math.round(reg.qtd)} kg</div>
+    <div style="font-size:11px;color:#94a3b8;">📅 ${dataProducao ? dataProducao.replace(' às ', ' - ') : 'Sem data'}</div>
   `;
   container.appendChild(infoDiv);
 
-  // Status — só mostra se consumida ou excluída
   if (reg.consumida || reg._removidaEstoque) {
     let statusDiv = document.createElement("div");
-    statusDiv.style.cssText = "text-align:center; margin-top:4px;";
+    statusDiv.style.cssText = "text-align:center;margin-top:4px;";
     if (reg.consumida) {
-      statusDiv.innerHTML = '<span style="font-size:12px; padding:3px 10px; border-radius:6px; background:#fefce8; color:#ca8a04; font-weight:600;">⚠️ Consumida</span>';
+      statusDiv.innerHTML = '<span style="font-size:12px;padding:3px 10px;border-radius:6px;background:#fefce8;color:#ca8a04;font-weight:600;">⚠️ Consumida</span>';
     } else {
-      statusDiv.innerHTML = '<span style="font-size:12px; padding:3px 10px; border-radius:6px; background:#fef2f2; color:#dc2626; font-weight:600;">🚫 Excluída</span>';
+      statusDiv.innerHTML = '<span style="font-size:12px;padding:3px 10px;border-radius:6px;background:#fef2f2;color:#dc2626;font-weight:600;">🚫 Excluída</span>';
     }
     container.appendChild(statusDiv);
   }
 
-  // Botão salvar imagem
   let salvarDiv = document.createElement("div");
-  salvarDiv.style.cssText = "text-align:center; margin-top:10px;";
-  salvarDiv.innerHTML = `<button onclick="salvarImagemQR('${item}', '${versao}', ${Math.round(reg.qtd)})" style="
-    background:#1e3a8a;
-    color:white;
-    border:none;
-    border-radius:8px;
-    padding:8px 16px;
-    font-size:13px;
-    font-weight:600;
-    cursor:pointer;
-    width:100%;
-  ">📥 Salvar imagem</button>`;
+  salvarDiv.style.cssText = "text-align:center;margin-top:10px;";
+  salvarDiv.innerHTML = `<button onclick="salvarImagemQR('${item}', '${versao}', ${Math.round(reg.qtd)})" style="background:#1e3a8a;color:white;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">📥 Salvar imagem</button>`;
   container.appendChild(salvarDiv);
 
   document.getElementById("modalQR").classList.remove("hidden");
@@ -3183,48 +2853,23 @@ function gerarQRBobina(index) {
 function salvarImagemQR(item, versao, peso) {
   let qrWrapper = document.querySelector('#qrContainer > div:nth-child(2)');
   if (!qrWrapper) { mostrarToast('Erro ao gerar imagem', 'erro'); return; }
-
   let qrCanvas = qrWrapper.querySelector('canvas');
   let qrImg = qrWrapper.querySelector('img');
   let qrSrc = '';
-
-  if (qrCanvas) {
-    qrSrc = qrCanvas.toDataURL('image/png');
-  } else if (qrImg && qrImg.src) {
-    qrSrc = qrImg.src;
-  }
-
+  if (qrCanvas) { qrSrc = qrCanvas.toDataURL('image/png'); }
+  else if (qrImg && qrImg.src) { qrSrc = qrImg.src; }
   if (!qrSrc) { mostrarToast('QR não encontrado', 'erro'); return; }
-
   let canvas = document.createElement('canvas');
-  canvas.width = 400;
-  canvas.height = 340;
+  canvas.width = 400; canvas.height = 340;
   let ctx = canvas.getContext('2d');
-
-  // Fundo
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, 400, 340);
-
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 400, 340);
   let img = new Image();
   img.onload = function() {
-    // QR centralizado
     ctx.drawImage(img, 100, 16, 200, 200);
-
-    // Textos
-    ctx.fillStyle = '#1e293b';
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 20px Arial';
-    ctx.fillText(item + ' — V' + versao, 200, 244);
-
-    ctx.font = 'bold 28px Arial';
-    ctx.fillStyle = '#1e3a8a';
-    ctx.fillText(peso + ' kg', 200, 278);
-
-    ctx.font = '12px Arial';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Estoque Mobile', 200, 320);
-
-    // Download
+    ctx.fillStyle = '#1e293b'; ctx.textAlign = 'center';
+    ctx.font = 'bold 20px Arial'; ctx.fillText(item + ' — V' + versao, 200, 244);
+    ctx.font = 'bold 28px Arial'; ctx.fillStyle = '#1e3a8a'; ctx.fillText(peso + ' kg', 200, 278);
+    ctx.font = '12px Arial'; ctx.fillStyle = '#94a3b8'; ctx.fillText('Estoque Mobile', 200, 320);
     let link = document.createElement('a');
     link.download = (item + '_V' + versao + '_' + peso + 'kg.png').replace(/[^a-zA-Z0-9._-]/g, '_');
     link.href = canvas.toDataURL('image/png');
@@ -3233,7 +2878,6 @@ function salvarImagemQR(item, versao, peso) {
   };
   img.src = qrSrc;
 }
-
 window.salvarImagemQR = salvarImagemQR;
 
 let historicoSelecionadoIndex = null;
@@ -3303,18 +2947,13 @@ async function abrirScannerQR() {
     document.getElementById("modalScannerQR").classList.remove("hidden");
     document.getElementById("scannerStatus").textContent = "Aponte a câmera para o QR da bobina";
     document.getElementById("reader").innerHTML = "";
-    
     const readerContainer = document.getElementById("reader");
     if (readerContainer) readerContainer.classList.add("camera-feedback");
-
     leitorQR = new Html5Qrcode("reader");
-
     await leitorQR.start(
       { facingMode: "environment" },
       { fps: 18, qrbox: { width: 240, height: 240 } },
-      async (decodedText) => {
-        await processarLeituraQR(decodedText);
-      },
+      async (decodedText) => { await processarLeituraQR(decodedText); },
       () => {}
     );
     leitorQRAberto = true;
@@ -3327,10 +2966,7 @@ async function abrirScannerQR() {
 
 async function fecharScannerQR() {
   try {
-    if (leitorQR && leitorQRAberto) {
-      await leitorQR.stop();
-      await leitorQR.clear();
-    }
+    if (leitorQR && leitorQRAberto) { await leitorQR.stop(); await leitorQR.clear(); }
   } catch (e) { console.warn("Erro ao fechar scanner:", e); }
   leitorQR = null;
   leitorQRAberto = false;
@@ -3356,80 +2992,65 @@ async function processarLeituraQR(textoLido) {
   scannerProcessando = false;
 }
 
-setCameraFeedback('sucesso');   // ou 'duplicado' ou 'erro' conforme o caso
-
 function setCameraFeedback(tipo) {
   const reader = document.getElementById('reader');
   const readerContinuo = document.getElementById('readerContinuo');
   let container = reader || readerContinuo;
-  
   if (!container) return;
-
-  // Remove classes anteriores
   container.classList.remove('success', 'warning', 'error');
-  
-  if (tipo === 'sucesso') {
-    container.classList.add('success');
-  } else if (tipo === 'duplicado' || tipo === 'jaExiste') {
-    container.classList.add('warning');
-  } else if (tipo === 'erro') {
-    container.classList.add('error');
-  }
-
-  // Remove o efeito depois de 1 segundo
-  setTimeout(() => {
-    container.classList.remove('success', 'warning', 'error');
-  }, 1100);
+  if (tipo === 'sucesso') container.classList.add('success');
+  else if (tipo === 'duplicado' || tipo === 'jaExiste') container.classList.add('warning');
+  else if (tipo === 'erro') container.classList.add('error');
+  setTimeout(() => { container.classList.remove('success', 'warning', 'error'); }, 1100);
 }
+
+/* ================= PARSER QR — NOVO FORMATO + COMPATIBILIDADE ================= */
 
 function interpretarQRSimplificado(texto) {
   if (!texto || !texto.includes("/")) return null;
   let partes = texto.split("/");
-  
-  // Remove prefixo BOB se existir
+
+  // NOVO FORMATO: B1/id/item/versao/peso
+  if (partes[0] === 'B1' && partes.length >= 5) {
+    let idCurto = partes[1];
+    let item = partes[2];
+    let versao = partes[3];
+    let peso = parseFloat(partes[4]);
+    if (!item || !versao || isNaN(peso) || peso <= 0) return null;
+    return {
+      id: texto,
+      bobinaId: idCurto,
+      tipo: descobrirTipoPorItem(item),
+      item: item,
+      versao: versao,
+      peso: peso,
+      data: "",
+      dataBruta: ""
+    };
+  }
+
+  // FORMATO ANTIGO: BOB/item/versao/peso/data/hora/id ou item/versao/peso/data/hora/id
   if (partes[0] === 'BOB') partes.shift();
-  
   if (partes.length < 3) return null;
-  
+
   let item = partes[0], versao = partes[1];
   let peso = parseFloat(partes[2]);
   if (!item || !versao || isNaN(peso) || peso <= 0) return null;
 
   let dataFormatada = "", dataBruta = "", bobinaId = null;
-
-  // 1. TENTA ACHAR O ID (Sempre a última parte do QR gerado pelo gerador)
   let ultimaParte = partes[partes.length - 1];
   if (ultimaParte && ultimaParte.length === 8 && /^[a-f0-9]+$/i.test(ultimaParte)) {
     bobinaId = ultimaParte;
   }
 
-  // 2. TRATA A DATA E HORA (Se existirem)
   if (partes.length >= 5) {
     let possData = partes[3];
-    let possHora = partes[4]; // Pode ser a Hora ou o ID (se não tiver hora)
-    
-    // Se a parte 3 for uma data válida (8 números seguidos, ex: 29042026)
+    let possHora = partes[4];
     if (/^\d{8}$/.test(possData)) {
       let d = possData;
-      let h = "000000"; // Hora padrão caso não exista
-      
-      // Se a parte 4 for uma hora válida (só números, 4 a 6 dígitos)
-      if (possHora && /^\d{4,6}$/.test(possHora)) {
-        h = possHora.padEnd(6, '0'); // Garante que tenha 6 casas (HHMMSS)
-      }
-      
-      dataFormatada = d.substring(0,2) + "/" + d.substring(2,4) + "/" + d.substring(4,8) +
-        ", " + h.substring(0,2) + ":" + h.substring(2,4) + ":" + h.substring(4,6);
+      let h = (possHora && /^\d{4,6}$/.test(possHora)) ? possHora.padEnd(6, '0') : "000000";
+      dataFormatada = d.substring(0,2) + "/" + d.substring(2,4) + "/" + d.substring(4,8) + ", " + h.substring(0,2) + ":" + h.substring(2,4) + ":" + h.substring(4,6);
       dataBruta = d + "/" + h;
-    }
-  }
-
-  // 3. FALLBACK (Para QRs antigos que só tinham 4 partes)
-  if (partes.length === 4 && !bobinaId) {
-    let quarta = partes[3];
-    if (/^\d{8}$/.test(quarta)) {
-      dataBruta = quarta + "/000000";
-      dataFormatada = quarta.substring(0,2) + "/" + quarta.substring(2,4) + "/" + quarta.substring(4,8) + ", 00:00:00";
     }
   }
 
@@ -3437,8 +3058,8 @@ function interpretarQRSimplificado(texto) {
     id: texto,
     bobinaId: bobinaId,
     tipo: descobrirTipoPorItem(item),
-    item: item, 
-    versao: versao, 
+    item: item,
+    versao: versao,
     peso: peso,
     data: dataFormatada,
     dataBruta: dataBruta
@@ -3446,55 +3067,38 @@ function interpretarQRSimplificado(texto) {
 }
 
 function localizarRegistroPorQR(dados) {
-  // 1. SE O QR TEM ID: Busca estritamente pelo ID
+  // PRIORIDADE: ID curto único
   if (dados.bobinaId) {
-    let encontradoPorId = historico.find(h => {
+    let encontrada = historico.find(h => {
       if (!h || h.tipo !== "Entrada") return false;
-      if (!h.id) return false;
-      
-      // Extrai o ID curto do histórico (serve para UUID e para o formato BOB/...)
-      let idCurtoHist = h.id.includes('/') 
-        ? h.id.split('/').pop() 
-        : h.id.replace(/-/g, '').substring(0, 8);
-        
-      return idCurtoHist === dados.bobinaId;
+      return extrairIdCurtoBobina(h.id) === dados.bobinaId;
     });
-    
-    // Se achou pelo ID, retorna a bobina. Se não achou, retorna nulo (bobina nova).
-    return encontradoPorId || null; 
+    if (encontrada) return encontrada;
   }
-  
-  // 2. SE O QR NÃO TEM ID (Etiquetas antigas apenas com Data/Hora):
-  let qrLido = dados.item + "/" + dados.versao + "/" + Math.round(parseFloat(dados.peso));
+
+  // FALLBACK para etiquetas antigas sem ID
+  let qrAntigo = dados.item + "/" + dados.versao + "/" + Math.round(parseFloat(dados.peso));
   if (dados.dataBruta) {
-      let partesBruta = dados.dataBruta.split("/");
-      let dmaLido = partesBruta[0];
-      let hmsLido = partesBruta[1].padEnd(6, '0');
-      qrLido += "/" + dmaLido + "/" + hmsLido;
+    let partesBruta = dados.dataBruta.split("/");
+    qrAntigo += "/" + partesBruta[0] + "/" + (partesBruta[1] || '').padEnd(6, '0');
   }
 
   return historico.find(h => {
     if (!h || h.tipo !== "Entrada") return false;
-    
     let partes = h.item.split(" - V");
-    let item = partes[0], versao = partes[1];
-    let qrDoHistorico = item + "/" + versao + "/" + Math.round(h.qtd);
-    
+    let qrDoHistorico = partes[0] + "/" + partes[1] + "/" + Math.round(h.qtd);
     let dataParaComparar = h.dataProducao || h.data;
     if (dataParaComparar) {
       let partesH = dataParaComparar.split(", ");
       if (partesH.length === 2) {
         let dmaH = partesH[0].split("/");
-        let hmsH = partesH[1].replace(/:/g, "").padEnd(6, '0');
         if (dmaH.length === 3) {
-          qrDoHistorico += "/" + dmaH[0] + dmaH[1] + dmaH[2] + "/" + hmsH;
+          qrDoHistorico += "/" + dmaH[0] + dmaH[1] + dmaH[2] + "/" + partesH[1].replace(/:/g, "").padEnd(6, '0');
         }
       }
     }
-    
-    if (qrLido === qrDoHistorico) return true;
+    if (qrAntigo === qrDoHistorico) return true;
     if (dados.id && h.id === dados.id) return true;
-    
     return false;
   }) || null;
 }
@@ -3503,60 +3107,48 @@ function mostrarResultadoQR(dados, registro) {
   qrLidoAtual = { dados, registro };
   let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
   let itemExiste = tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)];
-let medida = "-";
-if (itemExiste) {
-  medida = banco[tipo][dados.item][String(dados.versao)].tamanho || "-";
-}
+  let medida = "-";
+  if (itemExiste) medida = banco[tipo][dados.item][String(dados.versao)].tamanho || "-";
 
+  // Exibir data de produção do novo formato B1
   let etiquetaData = "-";
-  if (dados.id && dados.id.includes("/")) {
-    let partesId = dados.id.split("/");
-    if (partesId.length >= 5) {
-      let d = partesId[3], h = partesId[4];
-      if (h.length === 4) h = h + "00";
-      if (d.length === 8 && h.length === 6) {
-        etiquetaData = d.substring(0,2) + "/" + d.substring(2,4) + "/" + d.substring(4,8) +
-          " às " + h.substring(0,2) + ":" + h.substring(2,4) + ":" + h.substring(4,6);
-      }
+  if (dados.id && dados.id.startsWith('B1/')) {
+    // Novo formato não tem data embutida — busca no histórico se encontrado
+    if (registro && registro.data) {
+      etiquetaData = registro.data;
     }
-  }
-  if (etiquetaData === "-" && dados.dataBruta) {
+  } else if (dados.dataBruta) {
     let d = dados.dataBruta.split("/")[0];
-    let h = dados.dataBruta.split("/")[1];
-    if (h && h.length === 4) h = h + "00";
-    if (d && d.length === 8 && h && h.length === 6) {
-      etiquetaData = d.substring(0,2) + "/" + d.substring(2,4) + "/" + d.substring(4,8) +
-        " às " + h.substring(0,2) + ":" + h.substring(2,4) + ":" + h.substring(4,6);
+    let h = dados.dataBruta.split("/")[1] || '';
+    if (h.length === 4) h = h + "00";
+    if (d && d.length === 8 && h.length === 6) {
+      etiquetaData = d.substring(0,2) + "/" + d.substring(2,4) + "/" + d.substring(4,8) + " às " + h.substring(0,2) + ":" + h.substring(2,4) + ":" + h.substring(4,6);
     }
   }
 
   let status = "", statusTipo = "";
   if (!itemExiste) {
-    status = `<div style="margin-top:8px; color:#dc2626;"><strong>❌ Erro:</strong> Item ou versão não cadastrado</div>
-              <div style="margin-top:4px; padding:6px 10px; background:#fee2e2; border-radius:6px; color:#991b1b; font-size:13px; font-weight:600;">
-                ⚠️ Cadastre este item em "Gerenciar cadastro" antes de movimentá-lo.
-              </div>`;
+    status = `<div style="margin-top:8px;color:#dc2626;"><strong>❌ Erro:</strong> Item ou versão não cadastrado</div>
+              <div style="margin-top:4px;padding:6px 10px;background:#fee2e2;border-radius:6px;color:#991b1b;font-size:13px;font-weight:600;">⚠️ Cadastre este item em "Gerenciar cadastro" antes de movimentá-lo.</div>`;
     statusTipo = "erro_cadastro";
   } else if (registro) {
     if (registro._removidaEstoque) {
-      status = `<div style="margin-top:8px; color:#dc2626;"><strong>🚫 Status:</strong> Bobina excluída</div>`;
+      status = `<div style="margin-top:8px;color:#dc2626;"><strong>🚫 Status:</strong> Bobina excluída</div>`;
       statusTipo = "excluida";
     } else if (registro.consumida) {
-      status = `<div style="margin-top:8px; color:#ca8a04;"><strong>⚠️ Status:</strong> Bobina consumida</div>`;
+      status = `<div style="margin-top:8px;color:#ca8a04;"><strong>⚠️ Status:</strong> Bobina consumida</div>`;
       statusTipo = "consumida";
     } else {
-      status = `<div style="margin-top:8px; color:#16a34a;"><strong>✅ Status:</strong> ativa no estoque</div>
-                <div style="margin-top:4px; padding:6px 10px; background:#fef3c7; border-radius:6px; color:#92400e; font-size:13px; font-weight:600;">
-                  ⚠️ Esta bobina já está no estoque — entrada duplicada não permitida
-                </div>`;
+      status = `<div style="margin-top:8px;color:#16a34a;"><strong>✅ Status:</strong> ativa no estoque</div>
+                <div style="margin-top:4px;padding:6px 10px;background:#fef3c7;border-radius:6px;color:#92400e;font-size:13px;font-weight:600;">⚠️ Esta bobina já está no estoque — entrada duplicada não permitida</div>`;
       statusTipo = "ativa";
     }
   } else {
-    status = `<div style="margin-top:8px; color:#3b82f6;"><strong>🆕 Status:</strong> bobina nova (não encontrada no histórico)</div>`;
+    status = `<div style="margin-top:8px;color:#3b82f6;"><strong>🆕 Status:</strong> bobina nova (não encontrada no histórico)</div>`;
     statusTipo = "nova";
   }
 
-    document.getElementById("resultadoQRConteudo").innerHTML = `
+  document.getElementById("resultadoQRConteudo").innerHTML = `
     <div><strong>Tipo:</strong> ${tipo ? nomeCompletoTipo(tipo) : '<span style="color:#dc2626">Desconhecido</span>'}</div>
     <div><strong>Item:</strong> ${dados.item || '-'}</div>
     <div><strong>Versão:</strong> ${dados.versao || '-'}</div>
@@ -3596,8 +3188,7 @@ function usarQRNaMovimentacao() {
   let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
   let item = dados.item, versao = String(dados.versao), peso = dados.peso;
   if (!tipo || !banco[tipo] || !banco[tipo][item] || !banco[tipo][item][versao]) {
-    mostrarToast("Item do QR não encontrado no cadastro", "erro");
-    return;
+    mostrarToast("Item do QR não encontrado no cadastro", "erro"); return;
   }
   tipoSelect.value = tipo;
   filtrarPorTipo();
@@ -3621,33 +3212,29 @@ function entradaRapidaQR() {
   let item = dados.item, versao = String(dados.versao);
   let peso = parseFloat(dados.peso);
   if (!tipo || !banco[tipo] || !banco[tipo][item] || !banco[tipo][item][versao]) {
-    mostrarToast("Item não encontrado no cadastro", "erro");
-    return;
+    mostrarToast("Item não encontrado no cadastro", "erro"); return;
   }
   if (!peso || peso <= 0) { mostrarToast("Peso inválido no QR", "erro"); return; }
   let registroExistente = localizarRegistroPorQR(dados);
   if (registroExistente) {
     let status = registroExistente._removidaEstoque ? "excluída" : registroExistente.consumida ? "consumida" : "ativa no estoque";
-    mostrarToast("Bobina já registrada (" + status + ")", "erro");
-    return;
+    mostrarToast("Bobina já registrada (" + status + ")", "erro"); return;
   }
   salvarEstadoParaDesfazer();
   let identificador = item + " - V" + versao;
-  let dataEntrada = dados.data || new Date().toLocaleString();
+  // Usa o id do QR como id da entrada para garantir rastreabilidade
   let idSalvar = dados.id || crypto.randomUUID();
   estoque[identificador] = (estoque[identificador] || 0) + peso;
   estoque[identificador + "_qtd"] = (estoque[identificador + "_qtd"] || 0) + 1;
-// Se for opção "entrada", usa a data atual
-let dataFinal = (dados.data) ? dados.data : ((opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : dataEntrada);
-
-historico.push({ 
-  id: idSalvar, 
-  data: dataFinal, 
-  tipo: "Entrada", 
-  item: identificador, 
-  qtd: peso,
-  dataProducao: (opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : undefined
-});
+  let dataFinal = (opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : (dados.data || new Date().toLocaleString('pt-BR'));
+  historico.push({
+    id: idSalvar,
+    data: dataFinal,
+    tipo: "Entrada",
+    item: identificador,
+    qtd: peso,
+    dataProducao: (opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : undefined
+  });
   ultimoItem = identificador;
   salvarDados();
   atualizarTudo();
@@ -3723,38 +3310,27 @@ let continuoIdsLidos = [];
 
 async function abrirScannerContinuo() {
   await fecharTodosScanners();
-
   continuoContagem = 0;
   continuoIdsLidos = [];
   continuoProcessando = false;
-
   document.getElementById("modalScannerContinuo").classList.remove("hidden");
   document.getElementById("continuoContador").textContent = "0 bobinas adicionadas";
   document.getElementById("continuoLog").innerHTML = "";
   document.getElementById("readerContinuo").innerHTML = "";
-
   const readerContainer = document.getElementById("readerContinuo");
   if (readerContainer) readerContainer.classList.add("camera-feedback");
-
   let cooldown = false;
-
   try {
     leitorContinuo = new Html5Qrcode("readerContinuo");
     await leitorContinuo.start(
       { facingMode: "environment" },
-      { fps: 22, qrbox: { width: 240, height: 240 } },   // ← Aumentado para 22fps
+      { fps: 22, qrbox: { width: 240, height: 240 } },
       async (decodedText) => {
         if (cooldown) return;
         cooldown = true;
-
-        try {
-          await processarLeituraContinua(decodedText);
-        } catch (e) {
-          console.error(e);
-          setCameraFeedback('erro');
-        }
-
-        setTimeout(() => { cooldown = false; }, 650); // cooldown mais curto
+        try { await processarLeituraContinua(decodedText); }
+        catch (e) { console.error(e); setCameraFeedback('erro'); }
+        setTimeout(() => { cooldown = false; }, 650);
       },
       () => {}
     );
@@ -3773,6 +3349,7 @@ async function processarLeituraContinua(textoLido) {
   catch (e) { dados = interpretarQRSimplificado(textoLido); }
   if (!dados) { adicionarLogContinuo("⚠️ " + agora + " — QR inválido", "erro"); return; }
 
+  // Usa bobinaId (novo) ou id completo como chave de deduplicação
   let idQR = dados.bobinaId || dados.id || (dados.item + "/V" + dados.versao + "/" + dados.peso);
   if (continuoIdsLidos.includes(idQR)) {
     adicionarLogContinuo("⏭️ " + agora + " — " + dados.item + " V" + dados.versao + " — já lido", "duplicado");
@@ -3786,13 +3363,11 @@ async function processarLeituraContinua(textoLido) {
 
   if (!tipo || !banco[tipo] || !banco[tipo][item] || !banco[tipo][item][versao]) {
     adicionarLogContinuo("❌ " + agora + " — " + item + " V" + versao + " — não cadastrado", "erro");
-    if (navigator.vibrate) navigator.vibrate([200]);
-    return;
+    if (navigator.vibrate) navigator.vibrate([200]); return;
   }
   if (!peso || peso <= 0) {
     adicionarLogContinuo("❌ " + agora + " — " + item + " V" + versao + " — peso inválido", "erro");
-    if (navigator.vibrate) navigator.vibrate([200]);
-    return;
+    if (navigator.vibrate) navigator.vibrate([200]); return;
   }
 
   let registro = localizarRegistroPorQR(dados);
@@ -3808,22 +3383,19 @@ async function processarLeituraContinua(textoLido) {
   let identificador = item + " - V" + versao;
   estoque[identificador] = (estoque[identificador] || 0) + peso;
   estoque[identificador + "_qtd"] = (estoque[identificador + "_qtd"] || 0) + 1;
-  let dataEntrada = dados.data || new Date().toLocaleString();
   let idSalvar = dados.id || crypto.randomUUID();
-let dataFinal = (dados.data) ? dados.data : ((opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : dataEntrada);
-
-historico.push({ 
-  id: idSalvar, 
-  data: dataFinal, 
-  tipo: "Entrada", 
-  item: identificador, 
-  qtd: peso,
-  dataProducao: (opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : undefined
-});
+  let dataFinal = (opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : (dados.data || new Date().toLocaleString('pt-BR'));
+  historico.push({
+    id: idSalvar,
+    data: dataFinal,
+    tipo: "Entrada",
+    item: identificador,
+    qtd: peso,
+    dataProducao: (opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : undefined
+  });
   ultimoItem = identificador;
-    salvarDados();
+  salvarDados();
 
-  // Remove da lista de pendentes ao dar entrada
   if (dados.bobinaId) removerPendentePorId(dados.bobinaId);
   if (idSalvar) removerPendentePorId(idSalvar);
 
@@ -3847,6 +3419,23 @@ function adicionarLogContinuo(texto, tipo) {
   else log.appendChild(div);
 }
 
+async function fecharScannerContinuo() {
+  try {
+    if (leitorContinuo) {
+      await leitorContinuo.stop().catch(() => {});
+      await leitorContinuo.clear().catch(() => {});
+    }
+  } catch (e) { console.warn("Erro ao fechar scanner contínuo:", e); }
+  leitorContinuo = null;
+  leitorContinuoAberto = false;
+  continuoProcessando = false;
+  let modal = document.getElementById("modalScannerContinuo");
+  if (modal) modal.classList.add("hidden");
+  let reader = document.getElementById("readerContinuo");
+  if (reader) reader.innerHTML = "";
+  if (continuoContagem > 0) { atualizarTudo(); mostrarToast(continuoContagem + " bobina(s) adicionada(s)"); }
+}
+
 /* ================= EXPORTAR QR CODES ================= */
 
 function coletarBobinasParaQR(dataInicioP, dataFimP) {
@@ -3867,47 +3456,28 @@ function coletarBobinasParaQR(dataInicioP, dataFimP) {
     if (tipo && banco[tipo] && banco[tipo][item] && banco[tipo][item][versao]) {
       tamanho = banco[tipo][item][versao].tamanho;
     }
-    let dataQR = "";
+
+    // NOVO FORMATO
+    let conteudoQR = formatarNovoQR(h.id, item, versao, h.qtd);
+
+    let dataProducao = "";
     if (h.data) {
       let partesData = h.data.split(", ");
       if (partesData.length === 2) {
         let dma = partesData[0].split("/");
-        let hms = partesData[1].replace(/:/g, "");
-        if (hms.length === 4) hms = hms + "00";
-        if (dma.length === 3 && hms.length === 6) {
-          dataQR = dma[0] + dma[1] + dma[2] + "/" + hms;
-        }
-      }
-    }
-    let idCurto = '';
-if (h.id && typeof h.id === 'string') {
-  idCurto = h.id.includes('-') ? h.id.replace(/-/g, '').substring(0, 8) : h.id.substring(0, 8);
-}
-// Adicionamos o 'BOB/' no início
-let conteudoQR = 'BOB/' + item + "/" + versao + "/" + Math.round(h.qtd);
-if (dataQR) conteudoQR += "/" + dataQR;
-if (idCurto) conteudoQR += "/" + idCurto;
-
-    let dataProducao = "";
-    if (dataQR) {
-      let dParts = dataQR.split("/");
-      if (dParts.length === 2) {
-        let d = dParts[0], hr = dParts[1];
-        if (hr.length === 4) hr = hr + "00";
-        if (d.length === 8 && hr.length >= 4) {
-          dataProducao = d.substring(0,2) + "/" + d.substring(2,4) + "/" + d.substring(4,8) +
-            " " + hr.substring(0,2) + ":" + hr.substring(2,4) + ":" + hr.substring(4,6);
+        if (dma.length === 3) {
+          dataProducao = dma[0] + "/" + dma[1] + "/" + dma[2] + " " + partesData[1];
         }
       }
     }
 
     bobinas.push({
-  index, id: conteudoQR, tipo, tipoNome: nomeCompletoTipo(tipo),
-  item, versao, tamanho, medida: tamanho, peso: Math.round(h.qtd),
-  data: h.data, dataProducao,
-  status: h.consumida ? "consumida" : "ativa",
-  qrData: conteudoQR
-});
+      index, id: conteudoQR, tipo, tipoNome: nomeCompletoTipo(tipo),
+      item, versao, tamanho, medida: tamanho, peso: Math.round(h.qtd),
+      data: h.data, dataProducao,
+      status: h.consumida ? "consumida" : "ativa",
+      qrData: conteudoQR
+    });
   });
   return bobinas;
 }
@@ -3915,17 +3485,16 @@ if (idCurto) conteudoQR += "/" + idCurto;
 async function exportarQRCodesZIP(dataInicioP, dataFimP) {
   let bobinas = coletarBobinasParaQR(dataInicioP, dataFimP);
   if (bobinas.length === 0) { mostrarToast("Nenhuma bobina encontrada", "erro"); return; }
-
   let divModal = document.createElement('div');
   divModal.innerHTML = `
     <div class="modal-overlay" id="modalProgressoQR">
-      <div class="modal-content" style="text-align:center; max-width:350px;">
+      <div class="modal-content" style="text-align:center;max-width:350px;">
         <h3 style="margin-bottom:12px;">Gerando imagens QR</h3>
         <p id="progressoQRTexto">0 / ${bobinas.length}</p>
         <div class="barra" style="margin:12px 0;">
-          <div class="barra-preenchimento" id="progressoQRBarra" style="background:#1e3a8a; width:0%;"></div>
+          <div class="barra-preenchimento" id="progressoQRBarra" style="background:#1e3a8a;width:0%;"></div>
         </div>
-        <p style="font-size:12px; color:#64748b;">Aguarde...</p>
+        <p style="font-size:12px;color:#64748b;">Aguarde...</p>
       </div>
     </div>
   `;
@@ -4002,65 +3571,31 @@ async function gerarImagensQRIndividuais(bobinas) {
   }
 }
 
-/* ================= EXPORTAÇÃO ZPL / CSV ZEBRA (ATUALIZADO 10x6) ================= */
+/* ================= ZPL / CSV ZEBRA ================= */
 
 function montarZPLDeLista(lista, qtdPorEtiqueta) {
-  // Define 8 como o novo padrão para a etiqueta 10x6 (4 colunas x 2 linhas)
-  if (!qtdPorEtiqueta) qtdPorEtiqueta = 8; 
-  
-  let larguraEtiqueta = 799;
-  let alturaEtiqueta = 480;
-  
-  let cols = 4;
-  let linhasGrid = 2; // Math.ceil(8 / 4)
-  let qrMag = 5;
-  let fontH = 20;
-  let fontW = 20;
-  
-  let cellW = 199; // Largura exata da coluna que você calculou
-  let cellH = 240; // Altura exata da linha
-
+  if (!qtdPorEtiqueta) qtdPorEtiqueta = 8;
+  let larguraEtiqueta = 799, alturaEtiqueta = 480;
+  let cols = 4, linhasGrid = 2, qrMag = 5, fontH = 20, fontW = 20;
+  let cellW = 199, cellH = 240;
   let zpl = '';
 
   for (let i = 0; i < lista.length; i += qtdPorEtiqueta) {
     zpl += '^XA\n^CI28\n^PW' + larguraEtiqueta + '\n^LL' + alturaEtiqueta + '\n';
-
-    // 1. Cria as linhas verticais contínuas (X = 199, 398, 597)
-    for (let c = 1; c < cols; c++) {
-      let x = c * cellW;
-      zpl += '^FO' + x + ',0^GB1,' + alturaEtiqueta + ',3^FS\n';
-    }
-    
-    // 2. Cria a linha horizontal contínua no meio (Y = 240)
-    for (let l = 1; l < linhasGrid; l++) {
-      let y = l * cellH;
-      zpl += '^FO0,' + y + '^GB' + larguraEtiqueta + ',1,3^FS\n';
-    }
-
-    // 3. Preenche as células com os QRs e Textos
+    for (let c = 1; c < cols; c++) { let x = c * cellW; zpl += '^FO' + x + ',0^GB1,' + alturaEtiqueta + ',3^FS\n'; }
+    for (let l = 1; l < linhasGrid; l++) { let y = l * cellH; zpl += '^FO0,' + y + '^GB' + larguraEtiqueta + ',1,3^FS\n'; }
     for (let j = 0; j < qtdPorEtiqueta; j++) {
       let bob = lista[i + j];
-      if (!bob) break; // Se acabarem os itens, para de desenhar
-
-      let col = j % cols;
-      let lin = Math.floor(j / cols);
-      
-      let cellX = col * cellW;
-      let cellY = lin * cellH;
-      
-      // Coordenadas exatas relativas à célula baseadas no seu ZPL
-      let qrX = cellX + 32;
-      let qrY = cellY + 10;
-let textoY = cellY + 165 + fontH;
-
-      // Código de Barras BQN (QR Code)
+      if (!bob) break;
+      let col = j % cols, lin = Math.floor(j / cols);
+      let cellX = col * cellW, cellY = lin * cellH;
+      let qrX = cellX + 32, qrY = cellY + 10;
+      let textoY = cellY + 165 + fontH;
       zpl += '^FO' + qrX + ',' + qrY + '^BQN,2,' + qrMag + '^FDLA,' + bob.qrData + '^FS\n';
-      // Texto linha 1 - Item/Versão e Peso
       zpl += '^FO' + cellX + ',' + textoY + '^A0N,' + fontH + ',' + fontW + '^FB' + cellW + ',1,0,C^FD' + bob.desc + '^FS\n';
-// Texto linha 2 - Medida
-if (bob.medida) {
-  zpl += '^FO' + cellX + ',' + (textoY + 22) + '^A0N,16,16^FB' + cellW + ',1,0,C^FD' + bob.medida + '^FS\n';
-}
+      if (bob.medida) {
+        zpl += '^FO' + cellX + ',' + (textoY + 22) + '^A0N,16,16^FB' + cellW + ',1,0,C^FD' + bob.medida + '^FS\n';
+      }
     }
     zpl += '^XZ\n\n';
   }
@@ -4078,7 +3613,6 @@ function exportarZPLZebra(dataInicioP, dataFimP, qtdPorEtiqueta) {
   link.href = URL.createObjectURL(blob);
   link.download = "Zebra_" + qtdPorEtiqueta + "QR_" + getTimestamp() + ".zpl";
   link.click();
-  let totalEtiquetas = Math.ceil(bobinas.length / qtdPorEtiqueta);
   mostrarToast(".zpl exportado com sucesso");
 }
 
@@ -4095,9 +3629,7 @@ function exportarCSVZebraMult(dataInicioP, dataFimP, qtdPorEtiqueta = 8) {
       if (bob) {
         let desc = bob.item + "/" + bob.versao + " - " + bob.peso + "kg - " + (bob.medida || bob.tamanho || '');
         linhaDados.push('"' + bob.qrData.replace(/"/g, '""') + '"', '"' + desc.replace(/"/g, '""') + '"');
-      } else {
-        linhaDados.push('""', '""');
-      }
+      } else { linhaDados.push('""', '""'); }
     }
     linhas.push(linhaDados.join(","));
   }
@@ -4119,11 +3651,9 @@ function selecionarTipoExport(card) {
   document.querySelectorAll('#exportGrid .export-card').forEach(c => c.classList.remove('selecionado'));
   card.classList.add('selecionado');
   exportTipoSelecionado = card.dataset.tipo;
-
   let formatosNormal = document.getElementById('exportFormatosNormal');
   let formatosQR = document.getElementById('exportFormatosQR');
   let etapaPeriodo = document.getElementById('exportEtapaPeriodo');
-
   if (exportTipoSelecionado === 'qrcodes') {
     formatosNormal.classList.add('hidden');
     formatosQR.classList.remove('hidden');
@@ -4137,7 +3667,6 @@ function selecionarTipoExport(card) {
     formatosNormal.querySelectorAll('.export-formato-btn').forEach(b => b.classList.remove('selecionado'));
     formatosNormal.querySelector('[data-formato="excel"]').classList.add('selecionado');
   }
-
   if (exportTipoSelecionado === 'estoque') etapaPeriodo.classList.add('hidden');
   else etapaPeriodo.classList.remove('hidden');
 }
@@ -4161,29 +3690,23 @@ function resetarMenuExportar() {
   exportTipoSelecionado = 'estoque';
   exportFormatoSelecionado = 'excel';
   exportUsarPeriodo = false;
-
   document.querySelectorAll('#exportGrid .export-card').forEach(c => c.classList.remove('selecionado'));
   let primeiro = document.querySelector('#exportGrid .export-card[data-tipo="estoque"]');
   if (primeiro) primeiro.classList.add('selecionado');
-
   let formatosNormal = document.getElementById('exportFormatosNormal');
   let formatosQR = document.getElementById('exportFormatosQR');
   if (formatosNormal) formatosNormal.classList.remove('hidden');
   if (formatosQR) formatosQR.classList.add('hidden');
-
   document.querySelectorAll('.export-formato-btn').forEach(b => b.classList.remove('selecionado'));
   let excelBtn = document.querySelector('#exportFormatosNormal [data-formato="excel"]');
   if (excelBtn) excelBtn.classList.add('selecionado');
-
   let etapaPeriodo = document.getElementById('exportEtapaPeriodo');
   let periodoDatas = document.getElementById('exportPeriodoDatas');
   if (etapaPeriodo) etapaPeriodo.classList.add('hidden');
   if (periodoDatas) periodoDatas.classList.add('hidden');
-
   let toggleBtns = document.querySelectorAll('.export-periodo-toggle button');
   toggleBtns.forEach(b => b.classList.remove('selecionado'));
   if (toggleBtns[0]) toggleBtns[0].classList.add('selecionado');
-
   let di = document.getElementById('exportDataInicio');
   let df = document.getElementById('exportDataFim');
   if (di) di.value = '';
@@ -4197,11 +3720,9 @@ function executarExportacaoNova() {
     dataFimExp = document.getElementById('exportDataFim').value;
     if (!dataInicioExp && !dataFimExp) { mostrarToast('Informe pelo menos uma data', 'erro'); return; }
   }
-
   if (exportTipoSelecionado === 'estoque') {
     if (!Object.keys(estoque).some(k => !k.endsWith('_qtd'))) { mostrarToast('Estoque vazio', 'erro'); return; }
   }
-
   if (exportTipoSelecionado === 'historico' || exportTipoSelecionado === 'ambos') {
     let dadosFiltrados = historico.filter(h => {
       if (!dataInicioExp && !dataFimExp) return true;
@@ -4210,23 +3731,14 @@ function executarExportacaoNova() {
     });
     if (dadosFiltrados.length === 0) { mostrarToast('Nenhum registro no período', 'erro'); return; }
   }
-
   if (exportTipoSelecionado === 'qrcodes') {
     let bobinas = coletarBobinasParaQR(dataInicioExp, dataFimExp);
     if (bobinas.length === 0) { mostrarToast('Nenhuma bobina encontrada', 'erro'); return; }
-    if (exportFormatoSelecionado === 'zpl') {
-      abrirPreviewEtiqueta(dataInicioExp, dataFimExp);
-      fecharModalConfig();
-      return;
-    } else if (exportFormatoSelecionado === 'imagens') {
-      exportarQRCodesZIP(dataInicioExp, dataFimExp);
-    } else if (exportFormatoSelecionado === 'csv') {
-      exportarCSVZebraMult(dataInicioExp, dataFimExp, 8);
-    }
-    fecharModalConfig();
-    return;
+    if (exportFormatoSelecionado === 'zpl') { abrirPreviewEtiqueta(dataInicioExp, dataFimExp); fecharModalConfig(); return; }
+    else if (exportFormatoSelecionado === 'imagens') { exportarQRCodesZIP(dataInicioExp, dataFimExp); }
+    else if (exportFormatoSelecionado === 'csv') { exportarCSVZebraMult(dataInicioExp, dataFimExp, 8); }
+    fecharModalConfig(); return;
   }
-
   if (exportFormatoSelecionado === 'pdf') {
     if (exportTipoSelecionado === 'estoque') exportarEstoquePDF(dataInicioExp, dataFimExp);
     if (exportTipoSelecionado === 'historico') exportarHistoricoPDF(dataInicioExp, dataFimExp);
@@ -4243,9 +3755,7 @@ function executarExportacaoNova() {
 
 let previewDados = {
   bobinas: [], paginaAtual: 0, totalPaginas: 0,
-  qrPorEtiqueta: 8,
-  dataInicio: null, dataFim: null,
-  origem: null
+  qrPorEtiqueta: 8, dataInicio: null, dataFim: null, origem: null
 };
 
 function abrirPreviewEtiqueta(dataInicioP, dataFimP) {
@@ -4257,8 +3767,7 @@ function abrirPreviewEtiqueta(dataInicioP, dataFimP) {
   previewDados.dataInicio = dataInicioP;
   previewDados.dataFim = dataFimP;
   previewDados.origem = 'exportar';
-  document.getElementById('previewInfo').textContent =
-    '100 × 60 mm — ' + bobinas.length + ' bobina(s) em ' + previewDados.totalPaginas + ' etiqueta(s)';
+  document.getElementById('previewInfo').textContent = '100 × 60 mm — ' + bobinas.length + ' bobina(s) em ' + previewDados.totalPaginas + ' etiqueta(s)';
   document.getElementById('modalPreviewEtiqueta').classList.remove('hidden');
   gerarPreviewsQR(function() { desenharPreviewPagina(0); });
 }
@@ -4269,17 +3778,11 @@ function fecharPreviewEtiqueta() {
 }
 
 function previewPaginaAnterior() {
-  if (previewDados.paginaAtual > 0) {
-    previewDados.paginaAtual--;
-    desenharPreviewPagina(previewDados.paginaAtual);
-  }
+  if (previewDados.paginaAtual > 0) { previewDados.paginaAtual--; desenharPreviewPagina(previewDados.paginaAtual); }
 }
 
 function previewProximaPagina() {
-  if (previewDados.paginaAtual < previewDados.totalPaginas - 1) {
-    previewDados.paginaAtual++;
-    desenharPreviewPagina(previewDados.paginaAtual);
-  }
+  if (previewDados.paginaAtual < previewDados.totalPaginas - 1) { previewDados.paginaAtual++; desenharPreviewPagina(previewDados.paginaAtual); }
 }
 
 function gerarPreviewsQR(callback) {
@@ -4288,9 +3791,7 @@ function gerarPreviewsQR(callback) {
   document.body.appendChild(container);
   let pendentes = previewDados.bobinas.length;
   if (pendentes === 0) { container.remove(); if (callback) callback(); return; }
-
   let timeoutGlobal = setTimeout(() => { container.remove(); if (callback) callback(); }, 10000);
-
   previewDados.bobinas.forEach(function(bob, i) {
     let qrDiv = document.createElement('div');
     container.appendChild(qrDiv);
@@ -4318,11 +3819,7 @@ function gerarPreviewsQR(callback) {
         img.onerror = function() { bob._qrDataUrl = ''; pendentes--; if (pendentes <= 0) { clearTimeout(timeoutGlobal); container.remove(); if (callback) callback(); } };
         return;
       } else if (tentativas > 50) { bob._qrDataUrl = ''; resolvido = true; }
-      if (resolvido) {
-        clearInterval(verificar);
-        pendentes--;
-        if (pendentes <= 0) { clearTimeout(timeoutGlobal); container.remove(); if (callback) callback(); }
-      }
+      if (resolvido) { clearInterval(verificar); pendentes--; if (pendentes <= 0) { clearTimeout(timeoutGlobal); container.remove(); if (callback) callback(); } }
     }, 50);
   });
 }
@@ -4330,119 +3827,44 @@ function gerarPreviewsQR(callback) {
 function desenharPreviewPagina(pagina) {
   let canvas = document.getElementById('previewCanvas');
   let ctx = canvas.getContext('2d');
-
-  // Dimensões exatas: 799x480 pontos (10x6 cm a 203 DPI)
   let W = 799, H = 480;
   canvas.width = W; canvas.height = H;
-
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, W - 2, H - 2);
-
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2; ctx.strokeRect(1, 1, W - 2, H - 2);
   let inicio = pagina * previewDados.qrPorEtiqueta;
-
-  // Grade fixa: 4 colunas x 2 linhas = 8 bobinas (idêntico ao ZPL)
-  let cols = 4;
-  let linhas = 2;
-  let cellW = 199;
-  let cellH = 240;
-
-  // Linhas de grade (tracejadas no preview, sólidas no ZPL)
-  ctx.setLineDash([6, 4]);
-  ctx.strokeStyle = '#94a3b8';
-  ctx.lineWidth = 1;
-  for (let c = 1; c < cols; c++) {
-    let x = c * cellW;
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-  }
-  for (let l = 1; l < linhas; l++) {
-    let y = l * cellH;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-  }
+  let cols = 4, linhas = 2, cellW = 199, cellH = 240;
+  ctx.setLineDash([6, 4]); ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1;
+  for (let c = 1; c < cols; c++) { let x = c * cellW; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let l = 1; l < linhas; l++) { let y = l * cellH; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
   ctx.setLineDash([]);
-
-  // QR magnification 5 = 5×(4+2×4) = 5×12 = cada módulo 5px
-  // QR v2 (25 módulos) = 25×5 = 125px no ZPL
-  // Usamos o mesmo tamanho no preview
   let qrSize = 125;
-
   let imagensParaDesenhar = [];
-
   for (let j = 0; j < previewDados.qrPorEtiqueta; j++) {
     let bob = previewDados.bobinas[inicio + j];
     if (!bob) break;
-
-    let col = j % cols;
-    let lin = Math.floor(j / cols);
-    let cellX = col * cellW;
-    let cellY = lin * cellH;
-
-    // Coordenadas IDÊNTICAS ao ZPL: qrX = cellX+32, qrY = cellY+10
-    let qrX = cellX + 32;
-    let qrY = cellY + 10;
-
-    // Texto posição IDÊNTICA ao ZPL: textoY = cellY + 165 + fontH(20) = cellY+185
-    let textoY1 = cellY + 185;
-    let textoY2 = textoY1 + 22; // mesma distância do ZPL (textoY + 22)
-
-    // Texto linha 1 - Item/Versão e Peso (fonte 20px no ZPL → 20px no preview)
+    let col = j % cols, lin = Math.floor(j / cols);
+    let cellX = col * cellW, cellY = lin * cellH;
+    let qrX = cellX + 32, qrY = cellY + 10;
+    let textoY1 = cellY + 185, textoY2 = textoY1 + 22;
     let desc = bob.item + '/' + (bob.versao || '') + ' - ' + bob.peso;
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 20px Arial';
-    ctx.textAlign = 'center';
+    ctx.fillStyle = '#1e293b'; ctx.font = 'bold 20px Arial'; ctx.textAlign = 'center';
     ctx.fillText(desc, cellX + cellW / 2, textoY1);
-
-    // Texto linha 2 - Medida (fonte 16px no ZPL → 16px no preview)
-    if (bob.medida || bob.tamanho) {
-      ctx.font = '16px Arial';
-      ctx.fillStyle = '#64748b';
-      ctx.fillText(bob.medida || bob.tamanho || '', cellX + cellW / 2, textoY2);
-    }
-
-    // QR Code
-    if (bob._qrDataUrl) {
-      imagensParaDesenhar.push({
-        src: bob._qrDataUrl,
-        x: qrX, y: qrY,
-        size: qrSize
-      });
-    } else {
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(qrX, qrY, qrSize, qrSize);
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '12px Arial';
-      ctx.textAlign = 'center';
+    if (bob.medida || bob.tamanho) { ctx.font = '16px Arial'; ctx.fillStyle = '#64748b'; ctx.fillText(bob.medida || bob.tamanho || '', cellX + cellW / 2, textoY2); }
+    if (bob._qrDataUrl) { imagensParaDesenhar.push({ src: bob._qrDataUrl, x: qrX, y: qrY, size: qrSize }); }
+    else {
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1; ctx.strokeRect(qrX, qrY, qrSize, qrSize);
+      ctx.fillStyle = '#94a3b8'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
       ctx.fillText('QR', qrX + qrSize / 2, qrY + qrSize / 2 + 4);
     }
   }
-
-  // Rodapé informativo
-  ctx.fillStyle = '#cbd5e1';
-  ctx.font = '10px Arial';
-  ctx.textAlign = 'left';
-  ctx.fillText('100 x 60 mm', 6, H - 6);
-  ctx.textAlign = 'right';
-  ctx.fillText('203 DPI', W - 6, H - 6);
-  ctx.textAlign = 'left';
-
-  // Desenha os QR codes após carregar as imagens
+  ctx.fillStyle = '#cbd5e1'; ctx.font = '10px Arial'; ctx.textAlign = 'left';
+  ctx.fillText('100 x 60 mm', 6, H - 6); ctx.textAlign = 'right'; ctx.fillText('203 DPI', W - 6, H - 6); ctx.textAlign = 'left';
   let pendentes = imagensParaDesenhar.length;
   if (pendentes === 0) { atualizarNavPreview(); return; }
-
   imagensParaDesenhar.forEach(function(item) {
     let img = new Image();
-    img.onload = function() {
-      ctx.drawImage(img, item.x, item.y, item.size, item.size);
-      pendentes--;
-      if (pendentes <= 0) atualizarNavPreview();
-    };
-    img.onerror = function() {
-      pendentes--;
-      if (pendentes <= 0) atualizarNavPreview();
-    };
+    img.onload = function() { ctx.drawImage(img, item.x, item.y, item.size, item.size); pendentes--; if (pendentes <= 0) atualizarNavPreview(); };
+    img.onerror = function() { pendentes--; if (pendentes <= 0) atualizarNavPreview(); };
     img.src = item.src;
   });
 }
@@ -4455,42 +3877,15 @@ function atualizarNavPreview() {
 }
 
 function confirmarExportZPL() {
-  if (geradorBobinas.length > 0) {
-    fecharPreviewEtiqueta();
-    geradorGerarZPL();
-    return;
-  }
-
+  if (geradorBobinas.length > 0) { fecharPreviewEtiqueta(); geradorGerarZPL(); return; }
   if (previewDados.origem === 'pendentes' && etiquetasPendentes.length > 0) {
     fecharPreviewEtiqueta();
-
-    let lista = etiquetasPendentes.map(p => {
-      let dataQR = '';
-      let origemData = p.dataProducao || p.dataCriacao || '';
-
-      if (origemData) {
-        let partesData = origemData.split(", ");
-        if (partesData.length === 2) {
-          let dma = partesData[0].split("/");
-          let hms = partesData[1].replace(/:/g, "");
-          if (dma.length === 3 && hms.length >= 4) {
-            dataQR = "/" + dma[0] + dma[1] + dma[2] + "/" + hms;
-          }
-        }
-      }
-
-      return {
-        qrData: 'BOB/' + p.item + '/' + p.versao + '/' + Math.round(p.peso) + dataQR + '/' + p.idCurto,
-        desc: p.item + '/' + p.versao + ' - ' + p.peso,
-        medida: p.tamanho || ''
-      };
-    });
-
-    if (lista.length === 0) {
-      mostrarToast('Nenhuma bobina para exportar', 'erro');
-      return;
-    }
-
+    let lista = etiquetasPendentes.map(p => ({
+      qrData: formatarNovoQR(p.id || p.idCurto, p.item, p.versao, p.peso),
+      desc: p.item + '/' + p.versao + ' - ' + p.peso,
+      medida: p.tamanho || ''
+    }));
+    if (lista.length === 0) { mostrarToast('Nenhuma bobina para exportar', 'erro'); return; }
     let zpl = montarZPLDeLista(lista, previewDados.qrPorEtiqueta || 8);
     let blob = new Blob([zpl], { type: 'application/octet-stream' });
     let link = document.createElement('a');
@@ -4500,9 +3895,7 @@ function confirmarExportZPL() {
     mostrarToast('.zpl exportado');
     return;
   }
-
-  let di = previewDados.dataInicio;
-  let df = previewDados.dataFim;
+  let di = previewDados.dataInicio, df = previewDados.dataFim;
   fecharPreviewEtiqueta();
   exportarZPLZebra(di, df);
 }
@@ -4518,9 +3911,7 @@ function fecharGerador() { document.getElementById('modalGerador').classList.add
 function abrirGerador() {
   fecharModalConfig();
   if (geradorBobinas.length === 0 && etiquetasPendentes.length > 0) {
-    if (confirm('Você tem ' + etiquetasPendentes.length + ' etiqueta(s) pendente(s).\n\nDeseja verificar?')) {
-      abrirPendentes(); return;
-    }
+    if (confirm('Você tem ' + etiquetasPendentes.length + ' etiqueta(s) pendente(s).\n\nDeseja verificar?')) { abrirPendentes(); return; }
   }
   document.getElementById('modalGerador').classList.remove('hidden');
   geradorIrPasso(1);
@@ -4535,61 +3926,39 @@ function geradorConcluir() {
   if (geradorBobinas.length === 0) { mostrarToast('Nenhuma bobina para salvar', 'erro'); return; }
   adicionarPendentes(geradorBobinas);
   let total = geradorBobinas.reduce((acc, b) => acc + b.qtd, 0);
-  
   document.getElementById('geradorBotoesAntes').classList.add('hidden');
   document.getElementById('geradorBotoesDepois').classList.remove('hidden');
-  
   let resumo = document.getElementById('geradorExportTotal');
   if (resumo) resumo.textContent = '✅ ' + total + ' etiqueta(s) salva(s)!';
-  
   if (navigator.vibrate) navigator.vibrate([100]);
   mostrarToast(total + ' etiqueta(s) salva(s) como pendentes');
 }
 
 function geradorCancelar() {
   let concluiu = !document.getElementById('geradorBotoesDepois').classList.contains('hidden');
-
-  if (concluiu) {
-    geradorResetarTudo();
-    document.getElementById('modalGerador').classList.add('hidden');
-    return;
-  }
-
+  if (concluiu) { geradorResetarTudo(); document.getElementById('modalGerador').classList.add('hidden'); return; }
   if (geradorBobinas.length > 0) {
     if (!confirm('Descartar ' + geradorBobinas.reduce((a, b) => a + b.qtd, 0) + ' etiqueta(s)?')) return;
   }
-
   geradorResetarTudo();
   document.getElementById('modalGerador').classList.add('hidden');
   mostrarToast('Etiquetas descartadas');
 }
 
-function geradorFecharFinal() {
-  geradorResetarTudo();
-  document.getElementById('modalGerador').classList.add('hidden');
-}
+function geradorFecharFinal() { geradorResetarTudo(); document.getElementById('modalGerador').classList.add('hidden'); }
 
 function geradorFecharSimples() {
   let concluiu = !document.getElementById('geradorBotoesDepois').classList.contains('hidden');
-
-  if (concluiu) {
-    geradorResetarTudo();
-    document.getElementById('modalGerador').classList.add('hidden');
-    return;
-  }
-
+  if (concluiu) { geradorResetarTudo(); document.getElementById('modalGerador').classList.add('hidden'); return; }
   if (geradorBobinas.length > 0) {
     if (!confirm('Descartar ' + geradorBobinas.reduce((a, b) => a + b.qtd, 0) + ' etiqueta(s)?')) return;
   }
-
   geradorResetarTudo();
   document.getElementById('modalGerador').classList.add('hidden');
 }
 
 function geradorResetarTudo() {
-  geradorBobinas = [];
-  geradorEditandoIndex = null;
-  geradorGrupoAberto = null;
+  geradorBobinas = []; geradorEditandoIndex = null; geradorGrupoAberto = null;
   geradorLimparCampos();
   let busca = document.getElementById('geradorBusca');
   if (busca) busca.value = '';
@@ -4646,9 +4015,7 @@ function geradorSelecionouVersao() {
   let item = itemEl ? itemEl.value : '';
   let versao = versaoEl.value;
   let tamanho = '';
-  if (tipo && item && versao && banco[tipo] && banco[tipo][item] && banco[tipo][item][versao]) {
-    tamanho = banco[tipo][item][versao].tamanho;
-  }
+  if (tipo && item && versao && banco[tipo] && banco[tipo][item] && banco[tipo][item][versao]) tamanho = banco[tipo][item][versao].tamanho;
   if (buscaEl && item) buscaEl.value = item + ' - V' + versao + ' (' + tamanho + ')';
   if (pesoEl) pesoEl.focus();
 }
@@ -4761,8 +4128,8 @@ function geradorAdicionar() {
     geradorEditandoIndex = null;
     mostrarToast('Bobina atualizada');
   } else {
-let dataProducao = obterDataProducaoParaEtiqueta();
-geradorBobinas.push({ tipo, item, versao, tamanho, peso, qtd, ids: geradorGerarIds(qtd), dataProducao: dataProducao });
+    let dataProducao = obterDataProducaoParaEtiqueta();
+    geradorBobinas.push({ tipo, item, versao, tamanho, peso, qtd, ids: geradorGerarIds(qtd), dataProducao });
     mostrarToast('Adicionada');
   }
   geradorLimparCampos();
@@ -4859,9 +4226,7 @@ function geradorEditarBobina(chaveGrupo, bobinaIndex) {
   if (grupoAlvo.ids.length === 0) geradorBobinas.splice(grupoIndex, 1);
   let grupoDestino = geradorBobinas.find(bob => bob.tipo === tipo && bob.item === item && bob.versao === versao && bob.peso === novoPeso);
   if (grupoDestino) { grupoDestino.ids.push(idMantido); grupoDestino.qtd++; }
-  else {
-    geradorBobinas.splice(Math.min(grupoIndex, geradorBobinas.length), 0, { tipo, item, versao, tamanho: tamanhoSalvo, peso: novoPeso, qtd: 1, ids: [idMantido] });
-  }
+  else { geradorBobinas.splice(Math.min(grupoIndex, geradorBobinas.length), 0, { tipo, item, versao, tamanho: tamanhoSalvo, peso: novoPeso, qtd: 1, ids: [idMantido] }); }
   geradorAtualizarResumoTotal();
   geradorGrupoAberto = chaveGrupo;
   geradorRenderizarLista1();
@@ -4890,7 +4255,7 @@ function geradorRenderizarLista(containerId, comAcoes) {
   if (!container) return;
   container.innerHTML = '';
   if (geradorBobinas.length === 0) {
-    container.innerHTML = '<div style="text-align:center; color:#94a3b8; font-size:13px; padding:12px;">Nenhuma bobina adicionada</div>';
+    container.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:13px;padding:12px;">Nenhuma bobina adicionada</div>';
     return;
   }
   let grupos = {};
@@ -4929,21 +4294,16 @@ function geradorRenderizarLista(containerId, comAcoes) {
     });
 
     card.innerHTML = `
-      <div class="gerador-card-header" onclick="geradorToggleCard(this)" style="display:flex; align-items:center; justify-content:space-between; gap:6px; padding:8px 10px;">
-        
-        <!-- LADO ESQUERDO: Fica tudo em uma linha e corta com '...' se não couber -->
-        <div style="display:flex; align-items:center; gap:6px; overflow:hidden; white-space:nowrap; flex:1;">
-          <span class="gerador-card-tipo ${classTipo}" style="margin:0; flex-shrink:0;">${nomeTipo}</span>
-          <span style="font-size:13px; font-weight:600; text-overflow:ellipsis; overflow:hidden;">${grupo.item} / V${grupo.versao} · ${grupo.tamanho}</span>
+      <div class="gerador-card-header" onclick="geradorToggleCard(this)" style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;">
+        <div style="display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;flex:1;">
+          <span class="gerador-card-tipo ${classTipo}" style="margin:0;flex-shrink:0;">${nomeTipo}</span>
+          <span style="font-size:13px;font-weight:600;text-overflow:ellipsis;overflow:hidden;">${grupo.item} / V${grupo.versao} · ${grupo.tamanho}</span>
         </div>
-
-        <!-- LADO DIREITO: Total, Qtd e Seta -->
-        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-           <strong style="font-size:13px;">Total: ${formatarPeso(pesoTotal)} kg</strong>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <strong style="font-size:13px;">Total: ${formatarPeso(pesoTotal)} kg</strong>
           <span class="gerador-card-qtd" style="margin:0;">${qtdBobinas} bob.</span>
           <span class="gerador-card-seta" style="margin:0;">▶</span>
         </div>
-
       </div>
       <div class="gerador-card-body">${bobinasHTML}</div>
     `;
@@ -4967,28 +4327,16 @@ function geradorAtualizarResumoTotal() {
   if (elExport) elExport.textContent = total + ' etiqueta(s) pronta(s)';
 }
 
+// CORRIGIDO: geradorMontarZPL estava com erro de sintaxe
 function geradorMontarZPL() {
   let todas = [];
   geradorBobinas.forEach(bob => {
     bob.ids.forEach(id => {
-      let idCurto = id.replace(/-/g, '').substring(0, 8);
-let dataQR = '';
-if (bob.dataProducao) {
-  let partesData = bob.dataProducao.split(", ");
-  if (partesData.length === 2) {
-    let dma = partesData[0].split("/");
-    let hms = partesData[1].replace(/:/g, "");
-    if (dma.length === 3 && hms.length >= 4) {
-      dataQR = "/" + dma[0] + dma[1] + dma[2] + "/" + hms;
-    }
-  }
-}
-
-todas.push({ 
-  qrData: 'BOB/' + bob.item + '/' + bob.versao + '/' + Math.round(bob.peso) + dataQR + '/' + idCurto, 
-  desc: bob.item + '/' + bob.versao + ' - ' + bob.peso,
-  medida: bob.tamanho || ''
-});
+      todas.push({
+        qrData: formatarNovoQR(id, bob.item, bob.versao, bob.peso),
+        desc: bob.item + '/' + bob.versao + ' - ' + bob.peso,
+        medida: bob.tamanho || ''
+      });
     });
   });
   return montarZPLDeLista(todas, 8);
@@ -5028,44 +4376,20 @@ function geradorCopiarFallback(texto) {
 
 function geradorVisualizarZPL() {
   let todas = [];
-
   geradorBobinas.forEach(bob => {
     bob.ids.forEach(id => {
-      let idCurto = id.replace(/-/g, '').substring(0, 8);
-
-      let dataQR = '';
-      if (bob.dataProducao) {
-        let partesData = bob.dataProducao.split(", ");
-        if (partesData.length === 2) {
-          let dma = partesData[0].split("/");
-          let hms = partesData[1].replace(/:/g, "");
-          if (dma.length === 3 && hms.length >= 4) {
-            dataQR = "/" + dma[0] + dma[1] + dma[2] + "/" + hms;
-          }
-        }
-      }
-
       todas.push({
-        qrData: 'BOB/' + bob.item + '/' + bob.versao + '/' + Math.round(bob.peso) + dataQR + '/' + idCurto,
-        item: bob.item,
-        versao: bob.versao,
-        peso: bob.peso,
-        medida: bob.tamanho || ''
+        qrData: formatarNovoQR(id, bob.item, bob.versao, bob.peso),
+        item: bob.item, versao: bob.versao, peso: bob.peso, medida: bob.tamanho || ''
       });
     });
   });
-
-  if (todas.length === 0) {
-    mostrarToast('Nenhuma etiqueta para visualizar', 'erro');
-    return;
-  }
-
+  if (todas.length === 0) { mostrarToast('Nenhuma etiqueta para visualizar', 'erro'); return; }
   previewDados.bobinas = todas;
   previewDados.paginaAtual = 0;
   previewDados.totalPaginas = Math.ceil(todas.length / 8);
   previewDados.origem = 'gerador';
-  document.getElementById('previewInfo').textContent =
-    '100 × 60 mm — ' + todas.length + ' bobina(s) em ' + previewDados.totalPaginas + ' etiqueta(s)';
+  document.getElementById('previewInfo').textContent = '100 × 60 mm — ' + todas.length + ' bobina(s) em ' + previewDados.totalPaginas + ' etiqueta(s)';
   document.getElementById('modalPreviewEtiqueta').classList.remove('hidden');
   gerarPreviewsQR(function() { desenharPreviewPagina(0); });
 }
@@ -5081,21 +4405,14 @@ function carregarPendentes() {
 function salvarPendentes() {
   localStorage.setItem('etiquetasPendentes', JSON.stringify(etiquetasPendentes));
   atualizarBotaoPendentesConfig();
-
-  if (typeof salvarNoFirebase === 'function') {
-    salvarNoFirebase();
-  }
+  if (typeof salvarNoFirebase === 'function') salvarNoFirebase();
 }
 
 function atualizarBotaoPendentesConfig() {
   let contador = document.getElementById('btnPendentesContador');
   if (!contador) return;
-  if (etiquetasPendentes.length === 0) {
-    contador.style.display = 'none';
-  } else {
-    contador.textContent = '(Pendentes: ' + etiquetasPendentes.length + ')';
-    contador.style.display = 'inline';
-  }
+  if (etiquetasPendentes.length === 0) { contador.style.display = 'none'; }
+  else { contador.textContent = '(Pendentes: ' + etiquetasPendentes.length + ')'; contador.style.display = 'inline'; }
 }
 
 function adicionarPendentes(bobinas) {
@@ -5104,11 +4421,8 @@ function adicionarPendentes(bobinas) {
       etiquetasPendentes.push({
         id,
         idCurto: id.replace(/-/g, '').substring(0, 8),
-        tipo: bob.tipo,
-        item: bob.item,
-        versao: bob.versao,
-        tamanho: bob.tamanho,
-        peso: bob.peso,
+        tipo: bob.tipo, item: bob.item, versao: bob.versao,
+        tamanho: bob.tamanho, peso: bob.peso,
         dataCriacao: new Date().toLocaleString(),
         dataProducao: bob.dataProducao || null
       });
@@ -5120,12 +4434,11 @@ function adicionarPendentes(bobinas) {
 function removerPendentePorId(bobinaId) {
   if (!bobinaId) return;
   let idStr = String(bobinaId);
-  let idCurto = idStr.includes('-') ? idStr.replace(/-/g, '').substring(0, 8) : (idStr.length === 8 ? idStr : idStr.replace(/-/g, '').substring(0, 8));
+  let idCurto = extrairIdCurtoBobina(idStr) || idStr.replace(/-/g, '').substring(0, 8);
   let tamanhoAntes = etiquetasPendentes.length;
   etiquetasPendentes = etiquetasPendentes.filter(p => {
     if (p.idCurto === idCurto) return false;
     if (p.id === idStr) return false;
-    if (idStr.replace(/-/g, '').startsWith(p.idCurto)) return false;
     return true;
   });
   if (etiquetasPendentes.length < tamanhoAntes) salvarPendentes();
@@ -5139,17 +4452,7 @@ function removerPendentePorIndex(index) {
   salvarPendentes();
   renderizarPendentes();
   if (etiquetasPendentes.length === 0) { fecharPendentes(); mostrarToast('Todas as pendentes foram removidas'); }
-  else {
-    mostrarToast('Pendente removida');
-    if (chaveGrupo) {
-      document.querySelectorAll('#pendentesLista .gerador-card').forEach(card => {
-        let resumo = card.querySelector('.gerador-card-resumo');
-        if (!resumo) return;
-        let partesCh = chaveGrupo.split('|');
-        if (resumo.textContent.includes(partesCh[1] + ' / V' + partesCh[2])) card.classList.add('aberto');
-      });
-    }
-  }
+  else { mostrarToast('Pendente removida'); }
 }
 
 function abrirPendentes() {
@@ -5163,158 +4466,86 @@ function fecharPendentes() { document.getElementById('modalPendentes').classList
 function renderizarPendentes() {
   let container = document.getElementById('pendentesLista');
   let totalEl = document.getElementById('pendentesTotal');
-
   if (!container) return;
-
   container.innerHTML = '';
-
-  if (totalEl) {
-    totalEl.textContent = etiquetasPendentes.length + ' pendente(s)';
-  }
-
+  if (totalEl) totalEl.textContent = etiquetasPendentes.length + ' pendente(s)';
   if (!Array.isArray(etiquetasPendentes) || etiquetasPendentes.length === 0) {
-    container.innerHTML = '<div style="text-align:center; color:#94a3b8; font-size:13px; padding:12px;">Nenhuma etiqueta pendente</div>';
+    container.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:13px;padding:12px;">Nenhuma etiqueta pendente</div>';
     return;
   }
 
   let grupos = {};
-
   etiquetasPendentes.forEach((p, idx) => {
     if (!p) return;
-
     let chave = (p.tipo || '') + '|' + (p.item || '') + '|' + (p.versao || '');
-
-    if (!grupos[chave]) {
-      grupos[chave] = {
-        tipo: p.tipo || '',
-        item: p.item || '',
-        versao: p.versao || '',
-        tamanho: p.tamanho || '',
-        pendentes: []
-      };
-    }
-
-    grupos[chave].pendentes.push({
-      ...p,
-      indexReal: idx
-    });
+    if (!grupos[chave]) grupos[chave] = { tipo: p.tipo || '', item: p.item || '', versao: p.versao || '', tamanho: p.tamanho || '', pendentes: [] };
+    grupos[chave].pendentes.push({ ...p, indexReal: idx });
   });
 
   let html = '';
-
   Object.keys(grupos).forEach(chave => {
     let grupo = grupos[chave];
     let pesoTotal = grupo.pendentes.reduce((acc, p) => acc + (Number(p.peso) || 0), 0);
     let qtd = grupo.pendentes.length;
-
     let bobinasHTML = '';
-
     grupo.pendentes.forEach((p, bIdx) => {
       bobinasHTML += `
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 0; border-bottom:1px solid #f1f5f9;">
-          <span style="font-size:12px;">
-            <strong>Bobina ${bIdx + 1}:</strong> ${p.peso} kg
-            <span style="font-size:10px; color:#94a3b8; margin-left:4px;">${p.dataCriacao || ''}</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f1f5f9;">
+          <span style="font-size:12px;"><strong>Bobina ${bIdx + 1}:</strong> ${p.peso} kg
+            <span style="font-size:10px;color:#94a3b8;margin-left:4px;">${p.dataCriacao || ''}</span>
           </span>
-          <button class="btn-excluir-opcao" style="width:auto; padding:2px 8px; font-size:11px; height:26px; min-width:0;" onclick="event.stopPropagation(); removerPendentePorIndex(${p.indexReal})">🗑</button>
+          <button class="btn-excluir-opcao" style="width:auto;padding:2px 8px;font-size:11px;height:26px;min-width:0;" onclick="event.stopPropagation(); removerPendentePorIndex(${p.indexReal})">🗑</button>
         </div>
       `;
     });
-
     html += `
       <div class="gerador-card">
         <div class="gerador-card-header" onclick="geradorToggleCard(this)">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; width:100%;">
-            <div style="display:flex; align-items:center; gap:6px; overflow:hidden; white-space:nowrap; flex:1;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;">
+            <div style="display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;flex:1;">
               <span class="gerador-card-tipo tipo-${grupo.tipo}">${nomeBonitoTipo(grupo.tipo)}</span>
-              <span style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis;">
-                ${grupo.item} / V${grupo.versao} · ${grupo.tamanho}
-              </span>
+              <span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;">${grupo.item} / V${grupo.versao} · ${grupo.tamanho}</span>
             </div>
-            <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
               <strong style="font-size:13px;">Total: ${formatarPeso(pesoTotal)} kg</strong>
               <span class="gerador-card-qtd">${qtd} bob.</span>
               <span class="gerador-card-seta">▶</span>
             </div>
           </div>
         </div>
-
         <div class="gerador-card-body">
           <div><strong>Tipo:</strong> ${nomeCompletoTipo(grupo.tipo)}</div>
           <div><strong>Item:</strong> ${grupo.item}</div>
           <div><strong>Versão:</strong> ${grupo.versao} (${grupo.tamanho})</div>
-          <div style="margin-top:6px; font-weight:600; font-size:12px; color:#1e3a8a;">Bobinas:</div>
+          <div style="margin-top:6px;font-weight:600;font-size:12px;color:#1e3a8a;">Bobinas:</div>
           ${bobinasHTML}
         </div>
       </div>
     `;
   });
-
   container.innerHTML = html;
 }
 
 function pendentesMontarZPL() {
-  let lista = etiquetasPendentes.map(p => {
-    let dataQR = '';
-    let origemData = p.dataProducao || p.dataCriacao || '';
-
-    if (origemData) {
-      let partesData = origemData.split(", ");
-      if (partesData.length === 2) {
-        let dma = partesData[0].split("/");
-        let hms = partesData[1].replace(/:/g, "");
-        if (dma.length === 3 && hms.length >= 4) {
-          dataQR = "/" + dma[0] + dma[1] + dma[2] + "/" + hms;
-        }
-      }
-    }
-
-    return {
-      qrData: 'BOB/' + p.item + '/' + p.versao + '/' + Math.round(p.peso) + dataQR + '/' + p.idCurto,
-      desc: p.item + '/' + p.versao + ' - ' + p.peso,
-      medida: p.tamanho || ''
-    };
-  });
-
+  let lista = etiquetasPendentes.map(p => ({
+    qrData: formatarNovoQR(p.id || p.idCurto, p.item, p.versao, p.peso),
+    desc: p.item + '/' + p.versao + ' - ' + p.peso,
+    medida: p.tamanho || ''
+  }));
   return montarZPLDeLista(lista, 8);
 }
 
 function pendentesVisualizarZPL() {
-  if (etiquetasPendentes.length === 0) {
-    mostrarToast('Nenhuma pendente', 'erro');
-    return;
-  }
-
-  let todas = etiquetasPendentes.map(p => {
-    let dataQR = '';
-    let origemData = p.dataProducao || p.dataCriacao || '';
-
-    if (origemData) {
-      let partesData = origemData.split(", ");
-      if (partesData.length === 2) {
-        let dma = partesData[0].split("/");
-        let hms = partesData[1].replace(/:/g, "");
-        if (dma.length === 3 && hms.length >= 4) {
-          dataQR = "/" + dma[0] + dma[1] + dma[2] + "/" + hms;
-        }
-      }
-    }
-
-    return {
-      qrData: 'BOB/' + p.item + '/' + p.versao + '/' + Math.round(p.peso) + dataQR + '/' + p.idCurto,
-      item: p.item,
-      versao: p.versao,
-      peso: p.peso,
-      medida: p.tamanho || ''
-    };
-  });
-
+  if (etiquetasPendentes.length === 0) { mostrarToast('Nenhuma pendente', 'erro'); return; }
+  let todas = etiquetasPendentes.map(p => ({
+    qrData: formatarNovoQR(p.id || p.idCurto, p.item, p.versao, p.peso),
+    item: p.item, versao: p.versao, peso: p.peso, medida: p.tamanho || ''
+  }));
   previewDados.bobinas = todas;
   previewDados.paginaAtual = 0;
   previewDados.totalPaginas = Math.ceil(todas.length / 8);
   previewDados.origem = 'pendentes';
-  document.getElementById('previewInfo').textContent =
-    '100 × 60 mm — ' + todas.length + ' bobina(s) em ' + previewDados.totalPaginas + ' etiqueta(s)';
+  document.getElementById('previewInfo').textContent = '100 × 60 mm — ' + todas.length + ' bobina(s) em ' + previewDados.totalPaginas + ' etiqueta(s)';
   document.getElementById('modalPreviewEtiqueta').classList.remove('hidden');
   gerarPreviewsQR(function() { desenharPreviewPagina(0); });
 }
@@ -5323,10 +4554,8 @@ function pendentesCopiarZPL() {
   if (etiquetasPendentes.length === 0) { mostrarToast('Nenhuma pendente', 'erro'); return; }
   let zpl = pendentesMontarZPL();
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(zpl).then(() => {
-      mostrarToast('ZPL das pendentes copiado');
-      if (navigator.vibrate) navigator.vibrate([50]);
-    }).catch(() => { geradorCopiarFallback(zpl); });
+    navigator.clipboard.writeText(zpl).then(() => { mostrarToast('ZPL das pendentes copiado'); if (navigator.vibrate) navigator.vibrate([50]); })
+    .catch(() => { geradorCopiarFallback(zpl); });
   } else { geradorCopiarFallback(zpl); }
 }
 
@@ -5341,38 +4570,22 @@ function pendentesLimparTudo() {
 
 function copiarZPLDoPreview() {
   let zpl = '';
-
-  // Veio do gerador
-  if (geradorBobinas.length > 0) {
-    zpl = geradorMontarZPL();
-  }
-  // Veio das pendentes
-  else if (previewDados.origem === 'pendentes' && etiquetasPendentes.length > 0) {
-    zpl = pendentesMontarZPL();
-  }
-  // Veio do menu exportar
+  if (geradorBobinas.length > 0) { zpl = geradorMontarZPL(); }
+  else if (previewDados.origem === 'pendentes' && etiquetasPendentes.length > 0) { zpl = pendentesMontarZPL(); }
   else {
     let bobinas = coletarBobinasParaQR(previewDados.dataInicio, previewDados.dataFim);
     let lista = bobinas.map(bob => ({ qrData: bob.qrData, desc: bob.item + '/' + bob.versao + ' - ' + bob.peso, medida: bob.medida || bob.tamanho || '' }));
     zpl = montarZPLDeLista(lista, previewDados.qrPorEtiqueta || 8);
   }
-
   if (!zpl) { mostrarToast('Nenhum ZPL para copiar', 'erro'); return; }
-
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(zpl).then(() => {
-      mostrarToast('ZPL copiado para a área de transferência');
-      if (navigator.vibrate) navigator.vibrate([50]);
-    }).catch(() => { geradorCopiarFallback(zpl); });
-  } else {
-    geradorCopiarFallback(zpl);
-  }
+    navigator.clipboard.writeText(zpl).then(() => { mostrarToast('ZPL copiado para a área de transferência'); if (navigator.vibrate) navigator.vibrate([50]); })
+    .catch(() => { geradorCopiarFallback(zpl); });
+  } else { geradorCopiarFallback(zpl); }
 }
 
 function geradorLimparEFechar() {
-  if (geradorBobinas.length > 0) {
-    if (!confirm('Descartar as etiquetas geradas?')) return;
-  }
+  if (geradorBobinas.length > 0) { if (!confirm('Descartar as etiquetas geradas?')) return; }
   geradorResetarTudo();
   document.getElementById('modalGerador').classList.add('hidden');
   mostrarToast('Etiquetas descartadas');
@@ -5381,21 +4594,13 @@ function geradorLimparEFechar() {
 function geradorExportarDoPreview() { fecharPreviewEtiqueta(); geradorGerarZPL(); }
 
 /* ================= CONFIGURAÇÃO DE DATA DE PRODUÇÃO ================= */
-// Opções disponíveis:
-//   'geracao'  → usa a data/hora do momento em que clica "Concluir" no gerador
-//   'entrada'  → usa a data/hora do momento em que escaneia para dar entrada no estoque
-//   'manual'   → o usuário escolhe a data/hora manualmente no campo do gerador
-// Para remover/editar: busque por "CONFIGURAÇÃO DE DATA DE PRODUÇÃO"
 
 let opcaoDataProducao = localStorage.getItem('opcaoDataProducao') || 'geracao';
 
 function abrirConfigDataProducao() {
   fecharModalConfig();
-  
   let modal = document.getElementById('modalConfigDataProducao');
   modal.classList.remove('hidden');
-
-  // Marca a opção salva corretamente
   modal.querySelectorAll('input[name="opcaoData"]').forEach(function(radio) {
     radio.checked = (radio.value === opcaoDataProducao);
   });
@@ -5410,10 +4615,7 @@ function salvarOpcaoData(opcao) {
   localStorage.setItem('opcaoDataProducao', opcao);
   atualizarCampoDataManualGerador();
   mostrarToast('Data de produção: ' + nomeOpcaoData(opcao));
-
-  if (typeof salvarNoFirebase === 'function') {
-    salvarNoFirebase();
-  }
+  if (typeof salvarNoFirebase === 'function') salvarNoFirebase();
 }
 
 function nomeOpcaoData(opcao) {
@@ -5424,13 +4626,10 @@ function nomeOpcaoData(opcao) {
 }
 
 function atualizarCampoDataManualGerador() {
-  // Mostra ou esconde o campo de data manual no gerador
   let container = document.getElementById('geradorDataManualContainer');
   if (!container) return;
-
   if (opcaoDataProducao === 'manual') {
     container.classList.remove('hidden');
-    // Define valor padrão como agora
     let input = document.getElementById('geradorDataManual');
     if (input && !input.value) {
       let agora = new Date();
@@ -5443,42 +4642,52 @@ function atualizarCampoDataManualGerador() {
 }
 
 function obterDataProducaoParaEtiqueta() {
-  // Retorna a data formatada para gravar na etiqueta/QR
-  // Chamada quando uma bobina é adicionada no gerador
-
-  if (opcaoDataProducao === 'geracao') {
-    return new Date().toLocaleString('pt-BR');
-  }
-
+  if (opcaoDataProducao === 'geracao') return new Date().toLocaleString('pt-BR');
   if (opcaoDataProducao === 'manual') {
     let input = document.getElementById('geradorDataManual');
-    if (input && input.value) {
-      return new Date(input.value).toLocaleString('pt-BR');
-    }
+    if (input && input.value) return new Date(input.value).toLocaleString('pt-BR');
     return new Date().toLocaleString('pt-BR');
   }
-
-  // Para 'entrada', retorna null (será definida na hora da entrada)
   return null;
+}
+
+/* ================= AUXILIARES CONFERÊNCIA ================= */
+
+function extrairIdCurtoBobina(valor) {
+  if (!valor) return '';
+  let str = String(valor).trim().toLowerCase();
+
+  // Novo formato B1/id/...
+  if (str.startsWith('b1/')) {
+    let partes = str.split('/');
+    if (partes.length >= 2 && partes[1].length === 8 && /^[a-f0-9]{8}$/.test(partes[1])) return partes[1];
+  }
+
+  // Formato antigo BOB/item/versao/peso/.../id
+  let semPrefixo = str.replace(/^bob\//i, '');
+  let partes = semPrefixo.split('/');
+  let ultima = partes[partes.length - 1] || '';
+  if (/^[a-f0-9]{8}$/i.test(ultima)) return ultima.toLowerCase();
+
+  // UUID completo
+  if (/^[a-f0-9-]{32,36}$/i.test(str)) return str.replace(/-/g, '').substring(0, 8).toLowerCase();
+
+  // ID curto isolado
+  if (/^[a-f0-9]{8}$/i.test(str)) return str.toLowerCase();
+
+  return '';
 }
 
 /* ================= CONFERÊNCIA DE INVENTÁRIO ================= */
 
 let conferencia = {
-  ativa: false,
-  tipo: 'tudo',
-  dataInicio: null,
-  fotoEstoque: [],
-  conferidas: [],
-  extras: [],
-  scannerAberto: false,
-  leitor: null,
-  continuoMode: false
+  ativa: false, tipo: 'tudo', dataInicio: null,
+  fotoEstoque: [], conferidas: [], extras: [],
+  scannerAberto: false, leitor: null, continuoMode: false
 };
 
 function abrirConferencia() {
   fecharModalConfig();
-
   let salva = localStorage.getItem('conferencia');
   if (salva) {
     try {
@@ -5490,25 +4699,11 @@ function abrirConferencia() {
           confRenderizarLista();
           document.getElementById('modalConferencia').classList.remove('hidden');
           return;
-        } else {
-          localStorage.removeItem('conferencia');
-        }
+        } else { localStorage.removeItem('conferencia'); }
       }
     } catch (e) {}
   }
-
-  conferencia = {
-    ativa: false,
-    tipo: 'tudo',
-    dataInicio: null,
-    fotoEstoque: [],
-    conferidas: [],
-    extras: [],
-    scannerAberto: false,
-    leitor: null,
-    continuoMode: false
-  };
-
+  conferencia = { ativa: false, tipo: 'tudo', dataInicio: null, fotoEstoque: [], conferidas: [], extras: [], scannerAberto: false, leitor: null, continuoMode: false };
   mostrarTelaConf('confTelaIniciar');
   document.getElementById('modalConferencia').classList.remove('hidden');
 }
@@ -5524,10 +4719,7 @@ function fecharConferencia() {
 function mostrarTelaConf(telaId) {
   ['confTelaIniciar', 'confTelaAndamento', 'confTelaResultado'].forEach(id => {
     let el = document.getElementById(id);
-    if (el) {
-      el.classList.add('hidden');
-      el.style.display = 'none';
-    }
+    if (el) { el.classList.add('hidden'); el.style.display = 'none'; }
   });
   let tela = document.getElementById(telaId);
   if (tela) {
@@ -5541,62 +4733,32 @@ function mostrarTelaConf(telaId) {
 
 function iniciarConferencia() {
   let tipoSelecionado = document.querySelector('input[name="confTipo"]:checked').value;
-
   let foto = [];
   historico.forEach(h => {
     if (h.tipo !== 'Entrada' || h._removidaEstoque || h.consumida) return;
     let partes = h.item.split(' - V');
     if (partes.length < 2) return;
     let item = partes[0], versao = partes[1];
-
     let tipoItem = '';
     Object.keys(banco).forEach(t => { if (banco[t] && banco[t][item]) tipoItem = t; });
-
     if (tipoSelecionado !== 'tudo' && tipoItem !== tipoSelecionado) return;
-
     if (!estoque[h.item] || estoque[h.item] <= 0) return;
-
     let tamanho = '';
-    if (banco[tipoItem] && banco[tipoItem][item] && banco[tipoItem][item][versao]) {
-      tamanho = banco[tipoItem][item][versao].tamanho;
-    }
+    if (banco[tipoItem] && banco[tipoItem][item] && banco[tipoItem][item][versao]) tamanho = banco[tipoItem][item][versao].tamanho;
 
-    let idCurto = '';
-if (h.id && typeof h.id === 'string') {
-  if (h.id.includes('/')) {
-    idCurto = h.id.split('/').pop();
-  } else if (h.id.includes('-')) {
-    idCurto = h.id.replace(/-/g, '').substring(0, 8);
-  } else {
-    idCurto = h.id.substring(0, 8);
-  }
-}
+    // USA A FUNÇÃO CORRETA
+    let idCurto = extrairIdCurtoBobina(h.id);
 
-    foto.push({
-      id: h.id,
-      idCurto: idCurto,
-      item: item,
-      versao: versao,
-      identificador: h.item,
-      tipo: tipoItem,
-      peso: h.qtd,
-      tamanho: tamanho,
-      data: h.data
-    });
+    foto.push({ id: h.id, idCurto, item, versao, identificador: h.item, tipo: tipoItem, peso: h.qtd, tamanho, data: h.data });
   });
 
-  if (foto.length === 0) {
-    mostrarToast('Nenhuma bobina no estoque para conferir', 'erro');
-    return;
-  }
-
+  if (foto.length === 0) { mostrarToast('Nenhuma bobina no estoque para conferir', 'erro'); return; }
   conferencia.ativa = true;
   conferencia.tipo = tipoSelecionado;
   conferencia.dataInicio = new Date().toLocaleString('pt-BR');
   conferencia.fotoEstoque = foto;
   conferencia.conferidas = [];
   conferencia.extras = [];
-
   confSalvar();
   mostrarTelaConf('confTelaAndamento');
   confRenderizarLista();
@@ -5604,27 +4766,15 @@ if (h.id && typeof h.id === 'string') {
 }
 
 function confSalvar() {
-  let dados = {
-    ativa: conferencia.ativa,
-    tipo: conferencia.tipo,
-    dataInicio: conferencia.dataInicio,
-    fotoEstoque: conferencia.fotoEstoque,
-    conferidas: conferencia.conferidas,
-    extras: conferencia.extras
-  };
+  let dados = { ativa: conferencia.ativa, tipo: conferencia.tipo, dataInicio: conferencia.dataInicio, fotoEstoque: conferencia.fotoEstoque, conferidas: conferencia.conferidas, extras: conferencia.extras };
   localStorage.setItem('conferencia', JSON.stringify(dados));
 }
 
-function pausarConferencia() {
-  confSalvar();
-  fecharConferencia();
-  mostrarToast('Conferência pausada');
-}
+function pausarConferencia() { confSalvar(); fecharConferencia(); mostrarToast('Conferência pausada'); }
 
 function confRenderizarLista() {
   let container = document.getElementById('confLista');
   if (!container) return;
-
   let termo = '';
   let buscaEl = document.getElementById('confBusca');
   if (buscaEl) termo = normalizarTexto(buscaEl.value);
@@ -5635,187 +4785,122 @@ function confRenderizarLista() {
 
   let progEl = document.getElementById('confProgresso');
   if (progEl) progEl.textContent = totalConferidas + '/' + totalBobinas + ' (' + percentual + '%)';
-
   let barraEl = document.getElementById('confBarra');
   if (barraEl) barraEl.style.width = percentual + '%';
 
   let html = '';
 
-  // Extras
   if (conferencia.extras.length > 0) {
-    html += '<div style="font-size:12px; font-weight:700; color:#ca8a04; padding:4px 0;">⚠️ Extras (' + conferencia.extras.length + ')</div>';
+    html += '<div style="font-size:12px;font-weight:700;color:#ca8a04;padding:4px 0;">⚠️ Extras (' + conferencia.extras.length + ')</div>';
     conferencia.extras.forEach((extra, idx) => {
       let textoBusca = normalizarTexto(extra.item + ' ' + extra.versao + ' ' + extra.peso);
       if (termo && !textoBusca.includes(termo)) return;
-      html += `
-        <div style="display:flex; align-items:center; padding:8px; background:#fefce8; border:1px solid #fde68a; border-radius:8px; gap:8px;">
-          <span style="font-size:16px;">⚠️</span>
-          <div style="flex:1;">
-            <div style="font-size:13px; font-weight:600;">${extra.item} — V${extra.versao}</div>
-            <div style="font-size:11px; color:#64748b;">${extra.peso} kg · ${extra.tamanho || ''}</div>
-          </div>
-          <button class="btn-clear" style="width:28px; height:28px; font-size:12px;" onclick="confRemoverExtra(${idx})">X</button>
-        </div>
-      `;
+      html += `<div style="display:flex;align-items:center;padding:8px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;gap:8px;">
+        <span style="font-size:16px;">⚠️</span>
+        <div style="flex:1;"><div style="font-size:13px;font-weight:600;">${extra.item} — V${extra.versao}</div><div style="font-size:11px;color:#64748b;">${extra.peso} kg · ${extra.tamanho || ''}</div></div>
+        <button class="btn-clear" style="width:28px;height:28px;font-size:12px;" onclick="confRemoverExtra(${idx})">X</button>
+      </div>`;
     });
   }
 
-  // Conferidas
   let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
   if (conferidas.length > 0) {
-    html += '<div style="font-size:12px; font-weight:700; color:#16a34a; padding:4px 0;">✅ Conferidas (' + conferidas.length + ')</div>';
+    html += '<div style="font-size:12px;font-weight:700;color:#16a34a;padding:4px 0;">✅ Conferidas (' + conferidas.length + ')</div>';
     conferidas.forEach(bob => {
       let textoBusca = normalizarTexto(bob.item + ' ' + bob.versao + ' ' + bob.peso + ' ' + bob.tamanho);
       if (termo && !textoBusca.includes(termo)) return;
-      html += `
-        <div style="display:flex; align-items:center; padding:8px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; gap:8px;">
-          <span style="font-size:16px;">✅</span>
-          <div style="flex:1;">
-            <div style="font-size:13px; font-weight:600;">${bob.item} — V${bob.versao}</div>
-            <div style="font-size:11px; color:#64748b;">${Math.round(bob.peso)} kg · ${bob.tamanho}</div>
-          </div>
-          <button style="background:#dc2626; color:white; border:none; border-radius:6px; width:28px; height:28px; font-size:12px; cursor:pointer;" onclick="confDesmarcar('${bob.id}')">↩</button>
-        </div>
-      `;
+      html += `<div style="display:flex;align-items:center;padding:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;gap:8px;">
+        <span style="font-size:16px;">✅</span>
+        <div style="flex:1;"><div style="font-size:13px;font-weight:600;">${bob.item} — V${bob.versao}</div><div style="font-size:11px;color:#64748b;">${Math.round(bob.peso)} kg · ${bob.tamanho}</div></div>
+        <button style="background:#dc2626;color:white;border:none;border-radius:6px;width:28px;height:28px;font-size:12px;cursor:pointer;" onclick="confDesmarcar('${bob.id}')">↩</button>
+      </div>`;
     });
   }
 
-  // Pendentes
   let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
   if (pendentes.length > 0) {
-    html += '<div style="font-size:12px; font-weight:700; color:#64748b; padding:4px 0;">⬜ Pendentes (' + pendentes.length + ')</div>';
+    html += '<div style="font-size:12px;font-weight:700;color:#64748b;padding:4px 0;">⬜ Pendentes (' + pendentes.length + ')</div>';
     pendentes.forEach(bob => {
       let textoBusca = normalizarTexto(bob.item + ' ' + bob.versao + ' ' + bob.peso + ' ' + bob.tamanho);
       if (termo && !textoBusca.includes(termo)) return;
-      html += `
-        <div style="display:flex; align-items:center; padding:8px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; gap:8px; cursor:pointer;" onclick="confMarcarManual('${bob.id}')">
-          <span style="font-size:16px;">⬜</span>
-          <div style="flex:1;">
-            <div style="font-size:13px; font-weight:600;">${bob.item} — V${bob.versao}</div>
-            <div style="font-size:11px; color:#64748b;">${Math.round(bob.peso)} kg · ${bob.tamanho}</div>
-          </div>
-        </div>
-      `;
+      html += `<div style="display:flex;align-items:center;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;gap:8px;cursor:pointer;" onclick="confMarcarManual('${bob.id}')">
+        <span style="font-size:16px;">⬜</span>
+        <div style="flex:1;"><div style="font-size:13px;font-weight:600;">${bob.item} — V${bob.versao}</div><div style="font-size:11px;color:#64748b;">${Math.round(bob.peso)} kg · ${bob.tamanho}</div></div>
+      </div>`;
     });
   }
 
-  if (!html) html = '<div style="text-align:center; color:#94a3b8; padding:20px;">Nenhuma bobina encontrada</div>';
+  if (!html) html = '<div style="text-align:center;color:#94a3b8;padding:20px;">Nenhuma bobina encontrada</div>';
   container.innerHTML = html;
 }
 
-function confFiltrarLista() {
-  confRenderizarLista();
-}
+function confFiltrarLista() { confRenderizarLista(); }
 
 function confMarcarManual(id) {
-  if (conferencia.conferidas.includes(id)) {
-    mostrarToast('Já conferida', 'erro');
-    return;
-  }
+  if (conferencia.conferidas.includes(id)) { mostrarToast('Já conferida', 'erro'); return; }
   conferencia.conferidas.push(id);
-  confSalvar();
-  confRenderizarLista();
+  confSalvar(); confRenderizarLista();
   if (navigator.vibrate) navigator.vibrate([50]);
 }
 
 function confDesmarcar(id) {
   conferencia.conferidas = conferencia.conferidas.filter(c => c !== id);
-  confSalvar();
-  confRenderizarLista();
+  confSalvar(); confRenderizarLista();
 }
 
 function confRemoverExtra(idx) {
   conferencia.extras.splice(idx, 1);
-  confSalvar();
-  confRenderizarLista();
+  confSalvar(); confRenderizarLista();
 }
+
+/* ================= CONFERÊNCIA — PROCESSAR LEITURA (CORRIGIDO) ================= */
 
 function confProcessarLeitura(textoLido) {
   let dados = null;
-  try {
-    dados = JSON.parse(textoLido);
-  } catch (e) {
-    dados = interpretarQRSimplificado(textoLido);
-  }
-
-  if (!dados) {
-    mostrarToast('QR inválido', 'erro');
-    return 'erro';
-  }
+  try { dados = JSON.parse(textoLido); } catch (e) { dados = interpretarQRSimplificado(textoLido); }
+  if (!dados) return 'erro';
 
   let encontrada = null;
+  const idCurtoLido = dados.bobinaId || extrairIdCurtoBobina(textoLido);
 
-  // 1) Match EXATO pelo conteúdo inteiro do QR / id salvo
-  if (dados.id) {
-    encontrada = conferencia.fotoEstoque.find(bob =>
-      String(bob.id || '') === String(dados.id)
-    ) || null;
+  // 1) PRIORIDADE: busca pelo ID único
+  if (idCurtoLido) {
+    encontrada = conferencia.fotoEstoque.find(bob => extrairIdCurtoBobina(bob.id) === idCurtoLido) || null;
   }
 
-  // 2) Fallback pelo ID curto final
-  if (!encontrada && dados.bobinaId) {
-    encontrada = conferencia.fotoEstoque.find(bob =>
-      String(bob.idCurto || '') === String(dados.bobinaId)
-    ) || null;
-  }
-
-  // 3) Fallback por data + item + versão + peso
-  if (!encontrada && dados.dataBruta) {
-    encontrada = conferencia.fotoEstoque.find(bob => {
-      let dataNumBob = String(bob.data || '').replace(/[^0-9]/g, '');
-      let dataNumQR = String(dados.dataBruta || '').replace(/[^0-9]/g, '');
-
-      return (
-        dataNumBob === dataNumQR &&
+  // 2) FALLBACK para etiquetas antigas sem ID — pega a primeira NÃO conferida
+  if (!encontrada && !idCurtoLido) {
+    let candidatos = conferencia.fotoEstoque.filter(bob => {
+      let mesmaIdade = true;
+      if (dados.dataBruta) {
+        let dataNumBob = String(bob.data || '').replace(/[^0-9]/g, '');
+        let dataNumQR = String(dados.dataBruta || '').replace(/[^0-9]/g, '');
+        mesmaIdade = (dataNumBob === dataNumQR);
+      }
+      return mesmaIdade &&
         String(bob.item) === String(dados.item) &&
         String(bob.versao) === String(dados.versao) &&
-        Math.round(Number(bob.peso)) === Math.round(Number(dados.peso))
-      );
-    }) || null;
-  }
-
-  // 4) Último fallback: item + versão + peso
-  if (!encontrada) {
-    encontrada = conferencia.fotoEstoque.find(bob =>
-      String(bob.item) === String(dados.item) &&
-      String(bob.versao) === String(dados.versao) &&
-      Math.round(Number(bob.peso)) === Math.round(Number(dados.peso))
-    ) || null;
+        Math.round(Number(bob.peso)) === Math.round(Number(dados.peso));
+    });
+    encontrada = candidatos.find(bob => !conferencia.conferidas.includes(bob.id)) || candidatos[0] || null;
   }
 
   if (encontrada) {
-    if (conferencia.conferidas.includes(encontrada.id)) {
-      return 'duplicada';
-    }
-
+    if (conferencia.conferidas.includes(encontrada.id)) return 'duplicada';
     conferencia.conferidas.push(encontrada.id);
-    confSalvar();
-    confRenderizarLista();
+    confSalvar(); confRenderizarLista();
     return 'conferida';
   }
 
-  // Bobina extra
-  let tamanho = '';
+  // Extra
   let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
-
-  if (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)]) {
-    tamanho = banco[tipo][dados.item][String(dados.versao)].tamanho;
-  }
-
-  conferencia.extras.push({
-    item: dados.item,
-    versao: String(dados.versao),
-    peso: dados.peso,
-    tamanho: tamanho,
-    tipo: tipo
-  });
-
-  confSalvar();
-  confRenderizarLista();
+  let tamanho = (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)])
+    ? banco[tipo][dados.item][String(dados.versao)].tamanho : '';
+  conferencia.extras.push({ item: dados.item, versao: String(dados.versao), peso: dados.peso, tamanho, tipo });
+  confSalvar(); confRenderizarLista();
   return 'extra';
 }
 
-// Scanner QR único
 async function confScannerQR() {
   conferencia.continuoMode = false;
   document.getElementById('confScannerTitulo').textContent = 'Escanear para conferência';
@@ -5823,10 +4908,8 @@ async function confScannerQR() {
   document.getElementById('confScannerLog').innerHTML = '';
   document.getElementById('readerConf').innerHTML = '';
   document.getElementById('modalScannerConf').classList.remove('hidden');
-
   try {
     await fecharTodosScanners();
-
     conferencia.leitor = new Html5Qrcode('readerConf');
     await conferencia.leitor.start(
       { facingMode: 'environment' },
@@ -5845,7 +4928,6 @@ async function confScannerQR() {
   }
 }
 
-// Scanner contínuo
 async function confScannerContinuo() {
   conferencia.continuoMode = true;
   document.getElementById('confScannerTitulo').textContent = 'Leitura contínua — Conferência';
@@ -5853,30 +4935,19 @@ async function confScannerContinuo() {
   document.getElementById('confScannerLog').innerHTML = '';
   document.getElementById('readerConf').innerHTML = '';
   document.getElementById('modalScannerConf').classList.remove('hidden');
-
-  let ultimoQR = '';
   let cooldown = false;
-
   try {
     await fecharTodosScanners();
-
     conferencia.leitor = new Html5Qrcode('readerConf');
     await conferencia.leitor.start(
       { facingMode: 'environment' },
       { fps: 15, qrbox: { width: 230, height: 230 } },
       async (decodedText) => {
         if (cooldown) return;
-
         cooldown = true;
-        ultimoQR = decodedText;
-
         let resultado = await confProcessarLeitura(decodedText);
         confLogScanner(resultado, decodedText);
-        
-        document.getElementById('confScannerStatus').textContent = 
-          conferencia.conferidas.length + ' conferida(s)';
-
-        // Permite ler novamente a mesma etiqueta após 900ms (melhor UX)
+        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
         setTimeout(() => { cooldown = false; }, 900);
       },
       () => {}
@@ -5894,40 +4965,19 @@ function confLogScanner(resultado, texto) {
   let div = document.createElement('div');
   div.style.padding = '3px 0';
   div.style.borderBottom = '1px solid #f1f5f9';
-
   let dados = null;
   try { dados = JSON.parse(texto); } catch (e) { dados = interpretarQRSimplificado(texto); }
   let nome = dados ? (dados.item + ' V' + dados.versao) : texto.substring(0, 20);
-
-  if (resultado === 'conferida') {
-    div.style.color = '#16a34a';
-    div.textContent = '✅ ' + agora + ' — ' + nome + ' conferida';
-    if (navigator.vibrate) navigator.vibrate([100]);
-  } else if (resultado === 'duplicada') {
-    div.style.color = '#ca8a04';
-    div.textContent = '⏭️ ' + agora + ' — ' + nome + ' já conferida';
-    if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
-  } else if (resultado === 'extra') {
-    div.style.color = '#ca8a04';
-    div.textContent = '⚠️ ' + agora + ' — ' + nome + ' extra (não no estoque)';
-    if (navigator.vibrate) navigator.vibrate([200]);
-  } else {
-    div.style.color = '#dc2626';
-    div.textContent = '❌ ' + agora + ' — QR inválido';
-    if (navigator.vibrate) navigator.vibrate([200]);
-  }
-
+  if (resultado === 'conferida') { div.style.color = '#16a34a'; div.textContent = '✅ ' + agora + ' — ' + nome + ' conferida'; if (navigator.vibrate) navigator.vibrate([100]); }
+  else if (resultado === 'duplicada') { div.style.color = '#ca8a04'; div.textContent = '⏭️ ' + agora + ' — ' + nome + ' já conferida'; if (navigator.vibrate) navigator.vibrate([50, 30, 50]); }
+  else if (resultado === 'extra') { div.style.color = '#ca8a04'; div.textContent = '⚠️ ' + agora + ' — ' + nome + ' extra (não no estoque)'; if (navigator.vibrate) navigator.vibrate([200]); }
+  else { div.style.color = '#dc2626'; div.textContent = '❌ ' + agora + ' — QR inválido'; if (navigator.vibrate) navigator.vibrate([200]); }
   if (log.firstChild) log.insertBefore(div, log.firstChild);
   else log.appendChild(div);
 }
 
 async function confFecharScanner() {
-  try {
-    if (conferencia.leitor) {
-      await conferencia.leitor.stop();
-      await conferencia.leitor.clear();
-    }
-  } catch (e) {}
+  try { if (conferencia.leitor) { await conferencia.leitor.stop(); await conferencia.leitor.clear(); } } catch (e) {}
   conferencia.leitor = null;
   document.getElementById('modalScannerConf').classList.add('hidden');
   document.getElementById('readerConf').innerHTML = '';
@@ -5937,126 +4987,60 @@ async function confFecharScanner() {
 function finalizarConferencia() {
   let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
   let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
-
-  if (conferidas.length === 0) {
-    mostrarToast('Nenhuma bobina foi conferida ainda', 'erro');
-    return;
-  }
-
-  if (pendentes.length > 0) {
-    if (!confirm('Ainda há ' + pendentes.length + ' bobina(s) não conferida(s).\n\nFinalizar mesmo assim?')) return;
-  }
-
+  if (conferidas.length === 0) { mostrarToast('Nenhuma bobina foi conferida ainda', 'erro'); return; }
+  if (pendentes.length > 0) { if (!confirm('Ainda há ' + pendentes.length + ' bobina(s) não conferida(s).\n\nFinalizar mesmo assim?')) return; }
   conferencia.ativa = false;
   confSalvar();
-
-  // Resultado
   document.getElementById('confResConferidas').textContent = conferidas.length;
   document.getElementById('confResNaoEncontradas').textContent = pendentes.length;
   document.getElementById('confResExtras').textContent = conferencia.extras.length;
-
   let html = '';
-
   if (conferidas.length > 0) {
-    html += '<div style="font-size:12px; font-weight:700; color:#16a34a; padding:4px 0;">✅ Conferidas (' + conferidas.length + ')</div>';
-    conferidas.forEach(bob => {
-      html += `
-        <div style="padding:6px 8px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; font-size:12px;">
-          ✅ ${bob.item} — V${bob.versao} · ${Math.round(bob.peso)} kg · ${bob.tamanho}
-        </div>
-      `;
-    });
+    html += '<div style="font-size:12px;font-weight:700;color:#16a34a;padding:4px 0;">✅ Conferidas (' + conferidas.length + ')</div>';
+    conferidas.forEach(bob => { html += `<div style="padding:6px 8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;">✅ ${bob.item} — V${bob.versao} · ${Math.round(bob.peso)} kg · ${bob.tamanho}</div>`; });
   }
-
   if (pendentes.length > 0) {
-    html += '<div style="font-size:12px; font-weight:700; color:#dc2626; padding:4px 0;">❌ Não encontradas (' + pendentes.length + ')</div>';
-    pendentes.forEach(bob => {
-      html += `
-        <div style="padding:6px 8px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:12px;">
-          ❌ ${bob.item} — V${bob.versao} · ${Math.round(bob.peso)} kg · ${bob.tamanho}
-        </div>
-      `;
-    });
+    html += '<div style="font-size:12px;font-weight:700;color:#dc2626;padding:4px 0;">❌ Não encontradas (' + pendentes.length + ')</div>';
+    pendentes.forEach(bob => { html += `<div style="padding:6px 8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;">❌ ${bob.item} — V${bob.versao} · ${Math.round(bob.peso)} kg · ${bob.tamanho}</div>`; });
   }
-
   if (conferencia.extras.length > 0) {
-    html += '<div style="font-size:12px; font-weight:700; color:#ca8a04; padding:4px 0;">⚠️ Extras (' + conferencia.extras.length + ')</div>';
-    conferencia.extras.forEach(extra => {
-      html += `
-        <div style="padding:6px 8px; background:#fefce8; border:1px solid #fde68a; border-radius:6px; font-size:12px;">
-          ⚠️ ${extra.item} — V${extra.versao} · ${Math.round(extra.peso)} kg · ${extra.tamanho || ''}
-        </div>
-      `;
-    });
+    html += '<div style="font-size:12px;font-weight:700;color:#ca8a04;padding:4px 0;">⚠️ Extras (' + conferencia.extras.length + ')</div>';
+    conferencia.extras.forEach(extra => { html += `<div style="padding:6px 8px;background:#fefce8;border:1px solid #fde68a;border-radius:6px;font-size:12px;">⚠️ ${extra.item} — V${extra.versao} · ${Math.round(extra.peso)} kg · ${extra.tamanho || ''}</div>`; });
   }
-
   document.getElementById('confListaResultado').innerHTML = html;
   mostrarTelaConf('confTelaResultado');
 }
 
 function confAjustarEstoque() {
   let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
-
-  if (pendentes.length === 0 && conferencia.extras.length === 0) {
-    mostrarToast('Nada para ajustar', 'erro');
-    return;
-  }
-
+  if (pendentes.length === 0 && conferencia.extras.length === 0) { mostrarToast('Nada para ajustar', 'erro'); return; }
   let msg = '🔧 Ajustar estoque:\n\n';
   if (pendentes.length > 0) msg += '❌ Remover ' + pendentes.length + ' bobina(s) não encontrada(s)\n';
   if (conferencia.extras.length > 0) msg += '⚠️ Adicionar ' + conferencia.extras.length + ' bobina(s) extra(s)\n';
   msg += '\nDeseja continuar?';
-
   if (!confirm(msg)) return;
-
   salvarEstadoParaDesfazer();
-
-  // Remover não encontradas
   pendentes.forEach(bob => {
     let reg = historico.find(h => h.id === bob.id);
     if (reg) {
       reg._removidaEstoque = true;
-      historico.push({
-        id: crypto.randomUUID(),
-        data: new Date().toLocaleString(),
-        tipo: 'Exclusão',
-        item: bob.identificador,
-        qtd: bob.peso,
-        refEntradaId: bob.id,
-        refEntradaData: bob.data
-      });
-
+      historico.push({ id: crypto.randomUUID(), data: new Date().toLocaleString(), tipo: 'Exclusão', item: bob.identificador, qtd: bob.peso, refEntradaId: bob.id, refEntradaData: bob.data });
       if (estoque[bob.identificador]) {
         estoque[bob.identificador] -= bob.peso;
         if (estoque[bob.identificador + '_qtd'] > 0) estoque[bob.identificador + '_qtd']--;
-        if (estoque[bob.identificador] <= 0) {
-          delete estoque[bob.identificador];
-          delete estoque[bob.identificador + '_qtd'];
-        }
+        if (estoque[bob.identificador] <= 0) { delete estoque[bob.identificador]; delete estoque[bob.identificador + '_qtd']; }
       }
     }
   });
-
-  // Adicionar extras
   conferencia.extras.forEach(extra => {
     let identificador = extra.item + ' - V' + extra.versao;
     estoque[identificador] = (estoque[identificador] || 0) + extra.peso;
     estoque[identificador + '_qtd'] = (estoque[identificador + '_qtd'] || 0) + 1;
-
-    historico.push({
-      id: crypto.randomUUID(),
-      data: new Date().toLocaleString(),
-      tipo: 'Entrada',
-      item: identificador,
-      qtd: extra.peso
-    });
+    historico.push({ id: crypto.randomUUID(), data: new Date().toLocaleString(), tipo: 'Entrada', item: identificador, qtd: extra.peso });
   });
-
-  salvarDados();
-  atualizarTudo();
+  salvarDados(); atualizarTudo();
   localStorage.removeItem('conferencia');
   fecharConferencia();
-
   if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
   mostrarToast('Estoque ajustado pela conferência');
 }
@@ -6064,10 +5048,8 @@ function confAjustarEstoque() {
 function confExportarResultado() {
   let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
   let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
-
   const wb = XLSX.utils.book_new();
   let linhas = [];
-
   linhas.push(['CONFERÊNCIA DE INVENTÁRIO', '', '', '', '']);
   linhas.push(['Data início:', conferencia.dataInicio, '', '', '']);
   linhas.push(['Data fim:', new Date().toLocaleString('pt-BR'), '', '', '']);
@@ -6078,27 +5060,23 @@ function confExportarResultado() {
   linhas.push(['Não encontradas:', pendentes.length, '', '', '']);
   linhas.push(['Extras:', conferencia.extras.length, '', '', '']);
   linhas.push(['', '', '', '', '']);
-
   if (conferidas.length > 0) {
     linhas.push(['CONFERIDAS', '', '', '', '']);
     linhas.push(['Item', 'Versão', 'Medidas', 'Kg', 'Status']);
     conferidas.forEach(b => linhas.push([b.item, b.versao, b.tamanho, Math.round(b.peso), 'Conferida']));
     linhas.push(['', '', '', '', '']);
   }
-
   if (pendentes.length > 0) {
     linhas.push(['NÃO ENCONTRADAS', '', '', '', '']);
     linhas.push(['Item', 'Versão', 'Medidas', 'Kg', 'Status']);
     pendentes.forEach(b => linhas.push([b.item, b.versao, b.tamanho, Math.round(b.peso), 'Não encontrada']));
     linhas.push(['', '', '', '', '']);
   }
-
   if (conferencia.extras.length > 0) {
     linhas.push(['EXTRAS', '', '', '', '']);
     linhas.push(['Item', 'Versão', 'Medidas', 'Kg', 'Status']);
     conferencia.extras.forEach(b => linhas.push([b.item, b.versao, b.tamanho || '', Math.round(b.peso), 'Extra']));
   }
-
   const ws = XLSX.utils.aoa_to_sheet(linhas);
   ws['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 14 }];
   XLSX.utils.book_append_sheet(wb, ws, 'Conferência');
