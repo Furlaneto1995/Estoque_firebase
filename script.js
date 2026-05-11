@@ -3030,7 +3030,8 @@ function interpretarQRSimplificado(texto) {
   }
 
   // FORMATO ANTIGO: BOB/item/versao/peso/data/hora/id ou item/versao/peso/data/hora/id
-  if (partes[0] === 'BOB') partes.shift();
+  let temBOB = (partes[0] === 'BOB');
+  if (temBOB) partes.shift();
   if (partes.length < 3) return null;
 
   let item = partes[0], versao = partes[1];
@@ -3038,11 +3039,14 @@ function interpretarQRSimplificado(texto) {
   if (!item || !versao || isNaN(peso) || peso <= 0) return null;
 
   let dataFormatada = "", dataBruta = "", bobinaId = null;
+
+  // Extrair ID curto: sempre o último segmento se for hex de 8 chars
   let ultimaParte = partes[partes.length - 1];
   if (ultimaParte && ultimaParte.length === 8 && /^[a-f0-9]+$/i.test(ultimaParte)) {
-    bobinaId = ultimaParte;
+    bobinaId = ultimaParte.toLowerCase();
   }
 
+  // Extrair data se existir (partes[3] = data 8 dígitos, partes[4] = hora 4-6 dígitos)
   if (partes.length >= 5) {
     let possData = partes[3];
     let possHora = partes[4];
@@ -4861,28 +4865,31 @@ function confProcessarLeitura(textoLido) {
   if (!dados) return 'erro';
 
   let encontrada = null;
-  const idCurtoLido = dados.bobinaId || extrairIdCurtoBobina(textoLido);
+  let idCurtoLido = dados.bobinaId || '';
 
-  // 1) PRIORIDADE: busca pelo ID único
+  // Se não extraiu bobinaId do parser, tenta extrair direto do texto
+  if (!idCurtoLido) {
+    idCurtoLido = extrairIdCurtoBobina(textoLido);
+  }
+
+  // 1) PRIORIDADE: busca pelo ID curto único
   if (idCurtoLido) {
-    encontrada = conferencia.fotoEstoque.find(bob => extrairIdCurtoBobina(bob.id) === idCurtoLido) || null;
+    encontrada = conferencia.fotoEstoque.find(function(bob) {
+      let idCurtoBob = extrairIdCurtoBobina(bob.id);
+      return idCurtoBob === idCurtoLido;
+    }) || null;
   }
 
   // 2) FALLBACK para etiquetas antigas sem ID — pega a primeira NÃO conferida
   if (!encontrada && !idCurtoLido) {
-    let candidatos = conferencia.fotoEstoque.filter(bob => {
-      let mesmaIdade = true;
-      if (dados.dataBruta) {
-        let dataNumBob = String(bob.data || '').replace(/[^0-9]/g, '');
-        let dataNumQR = String(dados.dataBruta || '').replace(/[^0-9]/g, '');
-        mesmaIdade = (dataNumBob === dataNumQR);
-      }
-      return mesmaIdade &&
-        String(bob.item) === String(dados.item) &&
+    let candidatos = conferencia.fotoEstoque.filter(function(bob) {
+      return String(bob.item) === String(dados.item) &&
         String(bob.versao) === String(dados.versao) &&
         Math.round(Number(bob.peso)) === Math.round(Number(dados.peso));
     });
-    encontrada = candidatos.find(bob => !conferencia.conferidas.includes(bob.id)) || candidatos[0] || null;
+    encontrada = candidatos.find(function(bob) {
+      return !conferencia.conferidas.includes(bob.id);
+    }) || candidatos[0] || null;
   }
 
   if (encontrada) {
