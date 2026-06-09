@@ -5355,7 +5355,14 @@ function selecionarModoConferencia(modo) {
 async function confSalvarFirebase() {
   if (!nomeUsuarioConferencia || modoConferencia === 1) return;
   try {
-    await db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).set({
+    // Verifica se já foi marcada como finalizada — não sobrescreve
+    let docRef = db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase());
+    let docAtual = await docRef.get();
+    let jaFinalizada = docAtual.exists && docAtual.data().finalizada === true;
+
+    if (jaFinalizada) return; // não sobrescreve se já finalizou
+
+    await docRef.set({
       usuario: nomeUsuarioConferencia,
       conferidas: conferencia.conferidas,
       extras: conferencia.extras,
