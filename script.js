@@ -4757,6 +4757,7 @@ function iniciarConferencia() {
 function confSalvar() {
   let dados = { ativa: conferencia.ativa, tipo: conferencia.tipo, dataInicio: conferencia.dataInicio, fotoEstoque: conferencia.fotoEstoque, conferidas: conferencia.conferidas, extras: conferencia.extras };
   localStorage.setItem('conferencia', JSON.stringify(dados));
+confSalvarFirebase();
 }
 
 function pausarConferencia() { confSalvar(); fecharConferencia(); mostrarToast('Conferência pausada'); }
@@ -5276,6 +5277,234 @@ window.geradorLimparEFechar = geradorLimparEFechar;
 window.abrirConfigDataProducao = abrirConfigDataProducao;
 window.fecharConfigDataProducao = fecharConfigDataProducao;
 window.salvarOpcaoData = salvarOpcaoData;
+/* ================= CONFERÊNCIA COLABORATIVA ================= */
+
+let modoConferencia = 1; // 1 ou 2 usuários
+let nomeUsuarioConferencia = localStorage.getItem('nomeUsuarioConf') || '';
+
+function abrirInicioConferencia() {
+  fecharModalConfig();
+
+  // Verifica conferência em andamento primeiro
+  let salva = localStorage.getItem('conferencia');
+  if (salva) {
+    try {
+      let dados = JSON.parse(salva);
+      if (dados.ativa) {
+        if (confirm('Existe uma conferência em andamento.\n\nContinuar?')) {
+          conferencia = dados;
+          mostrarTelaConf('confTelaAndamento');
+          confRenderizarLista();
+          document.getElementById('modalConferencia').classList.remove('hidden');
+          return;
+        } else {
+          localStorage.removeItem('conferencia');
+          // Limpa também no Firebase se estava colaborativa
+          if (nomeUsuarioConferencia) {
+            try {
+              db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).delete();
+            } catch(e) {}
+          }
+        }
+      }
+    } catch(e) {}
+  }
+
+  // Abre modal inicial
+  let modal = document.getElementById('modalInicioConferencia');
+  if (!modal) { abrirConferencia(); return; }
+
+  // Preenche nome salvo
+  let input = document.getElementById('confNomeInput');
+  let nomeSalvo = document.getElementById('confNomeSalvo');
+  if (input && nomeUsuarioConferencia) {
+    input.value = nomeUsuarioConferencia;
+    if (nomeSalvo) nomeSalvo.style.display = 'block';
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function fecharInicioConferencia() {
+  let modal = document.getElementById('modalInicioConferencia');
+  if (modal) modal.classList.add('hidden');
+}
+
+function salvarNomeConferencia() {
+  let input = document.getElementById('confNomeInput');
+  if (!input || !input.value.trim()) {
+    mostrarToast('Digite seu nome', 'erro'); return;
+  }
+  nomeUsuarioConferencia = input.value.trim();
+  localStorage.setItem('nomeUsuarioConf', nomeUsuarioConferencia);
+  let nomeSalvo = document.getElementById('confNomeSalvo');
+  if (nomeSalvo) nomeSalvo.style.display = 'block';
+  mostrarToast('Nome salvo: ' + nomeUsuarioConferencia);
+}
+
+function selecionarModoConferencia(modo) {
+  if (!nomeUsuarioConferencia) {
+    mostrarToast('Salve seu nome primeiro', 'erro'); return;
+  }
+  modoConferencia = modo;
+  fecharInicioConferencia();
+  abrirConferencia();
+}
+
+// Salva parcial no Firebase durante a conferência
+async function confSalvarFirebase() {
+  if (!nomeUsuarioConferencia || modoConferencia === 1) return;
+  try {
+    await db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).set({
+      usuario: nomeUsuarioConferencia,
+      conferidas: conferencia.conferidas,
+      extras: conferencia.extras,
+      fotoEstoque: conferencia.fotoEstoque,
+      ativa: conferencia.ativa,
+      finalizada: false,
+      ultimaAtualizacao: new Date().toISOString()
+    });
+  } catch(e) {
+    console.error('Erro ao salvar conferência parcial:', e);
+  }
+}
+
+// Marca como finalizada e verifica se pode juntar
+async function confFinalizarColaborativo() {
+  if (modoConferencia === 1) {
+    finalizarConferencia();
+    return;
+  }
+
+  if (!nomeUsuarioConferencia) {
+    finalizarConferencia();
+    return;
+  }
+
+  try {
+    // Marca como finalizada
+    await db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).set({
+      usuario: nomeUsuarioConferencia,
+      conferidas: conferencia.conferidas,
+      extras: conferencia.extras,
+      fotoEstoque: conferencia.fotoEstoque,
+      ativa: false,
+      finalizada: true,
+      ultimaAtualizacao: new Date().toISOString()
+    });
+
+    finalizarConferencia();
+
+    // Verifica se o outro já finalizou
+    let aguardando = document.getElementById('confAguardandoContainer');
+    let btnJuntar = document.getElementById('btnJuntarConferencias');
+
+    let snapshot = await db.collection('conferencias').get();
+    let todasFinalizadas = [];
+    snapshot.forEach(doc => {
+      let d = doc.data();
+      if (d.finalizada) todasFinalizadas.push(d);
+    });
+
+    if (todasFinalizadas.length >= 2) {
+      // Os dois finalizaram — pode juntar
+      if (btnJuntar) btnJuntar.style.display = 'block';
+      if (aguardando) aguardando.style.display = 'none';
+      mostrarToast('Os dois finalizaram! Clique em Juntar.');
+    } else {
+      // Aguardando o outro
+      if (aguardando) {
+        aguardando.style.display = 'block';
+        let nomeEl = document.getElementById('confAguardandoNome');
+        if (nomeEl) nomeEl.textContent = 'Sua parte já foi enviada. Aguardando...';
+      }
+
+      // Escuta o Firebase até o outro finalizar
+      db.collection('conferencias').onSnapshot(snap => {
+        let finalizadas = [];
+        snap.forEach(doc => {
+          let d = doc.data();
+          if (d.finalizada) finalizadas.push(d);
+        });
+        if (finalizadas.length >= 2) {
+          if (btnJuntar) btnJuntar.style.display = 'block';
+          if (aguardando) aguardando.style.display = 'none';
+          if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+          mostrarToast('Os dois finalizaram! Clique em Juntar.');
+        }
+      });
+    }
+  } catch(e) {
+    console.error('Erro ao finalizar colaborativo:', e);
+    finalizarConferencia();
+  }
+}
+
+async function juntarConferencias() {
+  try {
+    let snapshot = await db.collection('conferencias').get();
+    let todas = [];
+    snapshot.forEach(doc => todas.push(doc.data()));
+
+    if (todas.length < 2) {
+      mostrarToast('Aguardando o outro usuário', 'erro'); return;
+    }
+
+    // Mescla conferidas (união)
+    let todasConferidas = new Set();
+    todas.forEach(conf => {
+      (conf.conferidas || []).forEach(id => todasConferidas.add(id));
+    });
+
+    // Mescla extras (união sem duplicatas por item+versao+peso)
+    let todosExtras = [];
+    let extrasChaves = new Set();
+    todas.forEach(conf => {
+      (conf.extras || []).forEach(extra => {
+        let chave = extra.item + '|' + extra.versao + '|' + extra.peso;
+        if (!extrasChaves.has(chave)) {
+          extrasChaves.add(chave);
+          todosExtras.push(extra);
+        }
+      });
+    });
+
+    // Usa fotoEstoque do primeiro (são iguais — mesmo estoque)
+    let foto = todas[0].fotoEstoque || conferencia.fotoEstoque;
+
+    // Atualiza conferência local com resultado mesclado
+    conferencia.conferidas = Array.from(todasConferidas);
+    conferencia.extras = todosExtras;
+    conferencia.fotoEstoque = foto;
+    conferencia.ativa = false;
+
+    // Esconde botão juntar e aguardando
+    let btnJuntar = document.getElementById('btnJuntarConferencias');
+    let aguardando = document.getElementById('confAguardandoContainer');
+    if (btnJuntar) btnJuntar.style.display = 'none';
+    if (aguardando) aguardando.style.display = 'none';
+
+    // Limpa conferências do Firebase
+    snapshot.forEach(doc => doc.ref.delete());
+
+    // Mostra resultado final mesclado
+    finalizarConferencia();
+
+    mostrarToast('✅ Conferências unidas com sucesso!');
+    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+  } catch(e) {
+    console.error('Erro ao juntar conferências:', e);
+    mostrarToast('Erro ao juntar conferências', 'erro');
+  }
+}
+
+window.abrirInicioConferencia = abrirInicioConferencia;
+window.fecharInicioConferencia = fecharInicioConferencia;
+window.salvarNomeConferencia = salvarNomeConferencia;
+window.selecionarModoConferencia = selecionarModoConferencia;
+window.confFinalizarColaborativo = confFinalizarColaborativo;
+window.juntarConferencias = juntarConferencias;
 window.abrirConferencia = abrirConferencia;
 window.fecharConferencia = fecharConferencia;
 window.iniciarConferencia = iniciarConferencia;
