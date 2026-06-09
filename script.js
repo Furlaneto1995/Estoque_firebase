@@ -5384,14 +5384,17 @@ async function confFinalizarColaborativo() {
   try {
     // Marca como finalizada
     await db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).set({
-      usuario: nomeUsuarioConferencia,
-      conferidas: conferencia.conferidas,
-      extras: conferencia.extras,
-      fotoEstoque: conferencia.fotoEstoque,
-      ativa: false,
-      finalizada: true,
-      ultimaAtualizacao: new Date().toISOString()
-    });
+  usuario: String(nomeUsuarioConferencia),
+  conferidas: conferencia.conferidas || [],
+  extras: conferencia.extras || [],
+  fotoEstoque: conferencia.fotoEstoque || [],
+  ativa: false,
+  finalizada: true,
+  ultimaAtualizacao: new Date().toISOString()
+}, { merge: false });
+
+// Confirma que salvou
+console.log('Salvei como finalizada:', nomeUsuarioConferencia);
 
     // Mostra tela de resultado primeiro
     finalizarConferencia();
@@ -5405,26 +5408,28 @@ async function confFinalizarColaborativo() {
 
     // Escuta Firebase até os dois finalizarem
     let listener = db.collection('conferencias').onSnapshot(snap => {
-      let finalizadas = [];
-      snap.forEach(doc => {
-        let d = doc.data();
-        console.log('Doc encontrado:', doc.id, 'finalizada:', d.finalizada);
-        if (d.finalizada === true) finalizadas.push(d);
-      });
+  let finalizadas = [];
+  let todas = [];
 
-      console.log('Total finalizadas:', finalizadas.length);
+  snap.forEach(doc => {
+    let d = doc.data();
+    todas.push(doc.id);
+    console.log('Doc:', doc.id, '| finalizada:', d.finalizada, '| tipo:', typeof d.finalizada);
+    if (d.finalizada === true) finalizadas.push(d);
+  });
 
-      if (finalizadas.length >= 2) {
-        // Para de escutar
-        listener();
+  console.log('Todos os docs:', todas, '| Finalizadas:', finalizadas.length);
 
-        if (btnJuntar) btnJuntar.style.display = 'block';
-        if (aguardando) aguardando.style.display = 'none';
-
-        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-        mostrarToast('Os dois finalizaram! Clique em Juntar.');
-      }
-    });
+  if (finalizadas.length >= 2) {
+    listener();
+    let btnJuntar = document.getElementById('btnJuntarConferencias');
+    let aguardando = document.getElementById('confAguardandoContainer');
+    if (btnJuntar) btnJuntar.style.display = 'block';
+    if (aguardando) aguardando.style.display = 'none';
+    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+    mostrarToast('Os dois finalizaram! Clique em Juntar.');
+  }
+});
 
   } catch(e) {
     console.error('Erro ao finalizar colaborativo:', e);
