@@ -52,6 +52,7 @@
 
 <!-- ================= MOVIMENTAR ================= -->
 <div id="movimentar" class="card">
+
   <select id="tipoSelect" onchange="filtrarPorTipo()">
     <option value="">Selecionar tipo</option>
     <option value="brf">BRF</option>
@@ -69,12 +70,13 @@
 
   <div id="saldoAtual"></div>
 
-  <div class="input-row">
-    <input id="buscaItem" placeholder="Busca manual" oninput="filtrar()">
-    <button class="btn-clear" onclick="limparBusca()">X</button>
+  <div class="busca-wrapper">
+    <div class="input-row">
+      <input id="buscaItem" placeholder="Busca manual" oninput="filtrar()">
+      <button class="btn-clear" onclick="limparBusca()">X</button>
+    </div>
+    <div id="sugestoes" class="suggestions hidden"></div>
   </div>
-
-  <div id="sugestoes" class="suggestions hidden"></div>
 
   <button class="last-item" onclick="usarUltimo()">Repetir último</button>
 
@@ -91,6 +93,7 @@
     <button class="btn-add btn-mov" onclick="movimentar('add')">Entrada</button>
     <button class="btn-remove btn-mov" onclick="movimentar('remove')">Saída</button>
   </div>
+
 </div>
 
 <!-- ================= ESTOQUE ================= -->
@@ -479,16 +482,6 @@
           <span class="switch-slider"></span>
         </label>
       </div>
-<div class="btn-opcao dark-switch-row" onclick="alternarModoArmazenamento()">
-  <div class="dark-switch-label">
-    <span id="armazenamentoIcon">🌐</span>
-    <span id="armazenamentoTexto">Firebase</span>
-  </div>
-  <label class="switch" onclick="event.stopPropagation()">
-    <input type="checkbox" id="armazenamentoToggle" onchange="alternarModoArmazenamento()" checked>
-    <span class="switch-slider"></span>
-  </label>
-</div>
       <button class="btn-opcao btn-cancelar-opcao" onclick="fecharModalConfig()">Fechar</button>
     </div>
 
