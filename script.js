@@ -4698,6 +4698,7 @@ function abrirConferencia() {
 }
 
 function fecharConferencia() {
+confJaFinalizada = false;
   document.getElementById('modalConferencia').classList.add('hidden');
   if (conferencia.leitor) {
     try { conferencia.leitor.stop(); conferencia.leitor.clear(); } catch (e) {}
@@ -5281,6 +5282,7 @@ window.salvarOpcaoData = salvarOpcaoData;
 
 let modoConferencia = 1; // 1 ou 2 usuários
 let nomeUsuarioConferencia = localStorage.getItem('nomeUsuarioConf') || '';
+let confJaFinalizada = false;
 
 function abrirInicioConferencia() {
   fecharModalConfig();
@@ -5354,23 +5356,19 @@ function selecionarModoConferencia(modo) {
 // Salva parcial no Firebase durante a conferência
 async function confSalvarFirebase() {
   if (!nomeUsuarioConferencia || modoConferencia === 1) return;
+  if (confJaFinalizada) return; // nunca sobrescreve após finalizar
   try {
-    // Verifica se já foi marcada como finalizada — não sobrescreve
-    let docRef = db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase());
-    let docAtual = await docRef.get();
-    let jaFinalizada = docAtual.exists && docAtual.data().finalizada === true;
-
-    if (jaFinalizada) return; // não sobrescreve se já finalizou
-
-    await docRef.set({
-      usuario: nomeUsuarioConferencia,
-      conferidas: conferencia.conferidas,
-      extras: conferencia.extras,
-      fotoEstoque: conferencia.fotoEstoque,
-      ativa: conferencia.ativa,
-      finalizada: false,
-      ultimaAtualizacao: new Date().toISOString()
-    });
+    await db.collection('conferencias')
+      .doc(nomeUsuarioConferencia.toLowerCase())
+      .set({
+        usuario: nomeUsuarioConferencia,
+        conferidas: conferencia.conferidas,
+        extras: conferencia.extras,
+        fotoEstoque: conferencia.fotoEstoque,
+        ativa: conferencia.ativa,
+        finalizada: false,
+        ultimaAtualizacao: new Date().toISOString()
+      });
   } catch(e) {
     console.error('Erro ao salvar conferência parcial:', e);
   }
@@ -5400,7 +5398,7 @@ async function confFinalizarColaborativo() {
   ultimaAtualizacao: new Date().toISOString()
 }, { merge: false });
 
-// Confirma que salvou
+confJaFinalizada = true; // ← AQUI
 console.log('Salvei como finalizada:', nomeUsuarioConferencia);
 
     // Mostra tela de resultado primeiro
