@@ -1,5 +1,4 @@
 /* ================= BASE ================= */
-
 body {
   font-family: 'Segoe UI', Roboto, Arial, sans-serif;
   background: #eef2f7;
@@ -57,7 +56,6 @@ input, select, textarea {
 }
 
 /* ================= BOTÕES ================= */
-
 .btn-add    { background: #16a34a; }
 .btn-remove { background: #dc2626; }
 .btn-main   { background: #1e3a8a; }
@@ -128,6 +126,7 @@ table .btn-remove {
   font-size: 13px;
   width: auto;
 }
+
 .btn-voltar:hover { background: #475569; }
 
 .btn-limpar-filtro {
@@ -149,26 +148,32 @@ table .btn-remove {
 }
 
 /* ================= HEADER ================= */
-
 .top-header {
-  position: relative;
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
-  padding: 4px 140px 4px 10px; /* Aumentado para dar espaço aos 4 botões */
+  padding: 4px 10px;
   background: #eef2f7;
   z-index: 10;
-  gap: 6px;
+  gap: 8px;
 }
 
 .titulo-conferencia {
   margin: 0;
-  text-align: center;
-  font-size: 19px;
+  font-size: 17px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
+  text-align: left;
+}
+
+/* ===== HEADER BUTTONS — extremidade direita ===== */
+.header-buttons {
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 /* ===== BTN-ICON — todos iguais no header ===== */
@@ -195,7 +200,6 @@ table .btn-remove {
 }
 
 /* ================= NAVEGAÇÃO ================= */
-
 .nav-top {
   display: flex;
   border-bottom: 2px solid #e5e7eb;
@@ -223,7 +227,6 @@ table .btn-remove {
 }
 
 /* ================= CARD PRINCIPAL ================= */
-
 .card {
   background: white;
   padding: 12px;
@@ -240,7 +243,6 @@ table .btn-remove {
 .hidden { display: none !important; }
 
 /* ================= TELAS ================= */
-
 #movimentar,
 #estoque,
 #historico,
@@ -251,12 +253,11 @@ table .btn-remove {
   min-height: 0;
 }
 
-#movimentar { overflow: hidden; }
+#movimentar { overflow: visible; }
 #movimentar select, #movimentar input { margin: 2px 0; }
-#movimentar .input-row { margin: 0; }
+#movimentar .input-row { margin: 0; position: relative; }
 
 /* ================= SALDO ATUAL ================= */
-
 #saldoAtual {
   text-align: center;
   font-size: 13px;
@@ -269,7 +270,6 @@ table .btn-remove {
 #saldoAtual strong { color: #1e3a8a; font-size: 14px; }
 
 /* ================= TABELA ================= */
-
 .table-container {
   flex: 1;
   overflow-y: auto;
@@ -309,7 +309,6 @@ th:last-child, td:last-child { width: 30px; }
 }
 
 /* ===== Colunas Estoque ===== */
-
 #estoque table { table-layout: fixed; width: 100%; }
 #estoque table th:nth-child(1), #estoque table td:nth-child(1) { width: 17%; white-space: nowrap; }
 #estoque table th:nth-child(2), #estoque table td:nth-child(2) { width: 18%; }
@@ -320,7 +319,6 @@ th:last-child, td:last-child { width: 30px; }
 #estoque table th:nth-child(7), #estoque table td:nth-child(7) { width: 12%; min-width: 30px; }
 
 /* ===== Colunas Histórico ===== */
-
 #historico table th:nth-child(1), #historico table td:nth-child(1) { width: 18%; word-break: break-word; }
 #historico table th:nth-child(2), #historico table td:nth-child(2) { width: 21%; white-space: normal; }
 #historico table th:nth-child(3), #historico table td:nth-child(3) { width: 14%; white-space: nowrap; font-size: 10px; }
@@ -329,7 +327,6 @@ th:last-child, td:last-child { width: 30px; }
 #historico table th:nth-child(6), #historico table td:nth-child(6) { width: 10%; min-width: 30px; }
 
 /* ================= SETAS ORDENAÇÃO ================= */
-
 thead th.sortable { user-select: none; }
 
 thead th.sortable .sort-arrow {
@@ -345,7 +342,6 @@ thead th.sortable.desc .sort-arrow::after { content: "▼"; }
 thead th.sortable.none .sort-arrow::after { content: ""; }
 
 /* ================= TOAST ================= */
-
 .toast {
   position: fixed;
   top: 20px;
@@ -375,12 +371,18 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 }
 
 /* ================= BUSCA ================= */
-
 .input-row {
   display: flex;
   gap: 6px;
   width: 100%;
   align-items: stretch;
+}
+
+/* ================= BUSCA WRAPPER ================= */
+.busca-wrapper {
+  position: relative;
+  width: 100%;
+  flex-shrink: 0;
 }
 
 .input-row input {
@@ -405,6 +407,14 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 }
 
 /* ================= SUGESTÕES ================= */
+#sugestoes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 1000;
+  margin-top: 2px;
+}
 
 .suggestions {
   background: white;
@@ -412,14 +422,14 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
   border-radius: 8px;
   max-height: 160px;
   overflow-y: auto;
-  z-index: 100;
+  width: 100%;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
 }
 
 .suggestions div { padding: 8px 12px; font-size: 13px; cursor: pointer; }
 .suggestions div:hover { background: #f0f4ff; }
 
 /* ================= FILTRO PERÍODO ================= */
-
 .filtro-periodo {
   display: flex;
   gap: 8px;
@@ -435,7 +445,6 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 }
 
 /* ================= CARDS RESUMO ================= */
-
 .cards-container {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -466,7 +475,6 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 .card-total.clicavel:active { transform: scale(0.97); }
 
 /* ================= BARRAS ================= */
-
 .barra {
   width: 100%;
   height: 20px;
@@ -495,7 +503,6 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 .card-total.laminacao .barra-preenchimento { background: #ea580c; }
 
 /* ================= MODAL ================= */
-
 .modal-overlay {
   position: fixed !important;
   top: 0 !important;
@@ -509,9 +516,7 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
   z-index: 99999 !important;
 }
 
-.modal-overlay.hidden {
-  display: none !important;
-}
+.modal-overlay.hidden { display: none !important; }
 
 .modal-content {
   background: white;
@@ -543,7 +548,6 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 }
 
 /* ================= MODAL OPÇÕES LONG PRESS ================= */
-
 .modal-opcoes-content {
   background: white;
   padding: 16px;
@@ -592,7 +596,6 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 .btn-cancelar-opcao { background: #f1f5f9; color: #64748b; text-align: center; }
 
 /* ================= MODAL SAÍDA ================= */
-
 .modal-saida-content {
   background: white;
   padding: 16px;
@@ -654,17 +657,14 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 .bobina-marcada td { background: #dbeafe !important; }
 
 /* ================= CORES HISTÓRICO ================= */
-
 .linha-entrada td         { background: #f0fdf4 !important; }
 .linha-saida td           { background: #fef2f2; }
 .linha-consumida td       { background: #fefce8; }
 .linha-excluida td        { background: #fce4ec; }
 .linha-consumo-parcial td { background: #e0f2fe !important; }
-
-.bobina-consumida td { text-decoration: line-through; opacity: 0.5; }
+.bobina-consumida td      { text-decoration: line-through; opacity: 0.5; }
 
 /* ================= STATUS E REFERÊNCIAS ================= */
-
 .entrada-status {
   display: block;
   font-size: 10px;
@@ -685,7 +685,6 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 }
 
 /* ================= TELA DETALHES ================= */
-
 .detalhes-header {
   display: flex;
   align-items: center;
@@ -712,7 +711,6 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 }
 
 /* ===== Colunas Detalhes ===== */
-
 #detalhesTipo table th:nth-child(1), #detalhesTipo table td:nth-child(1) { width: 10ch; }
 #detalhesTipo table th:nth-child(2), #detalhesTipo table td:nth-child(2) { width: 4ch;  }
 #detalhesTipo table th:nth-child(3), #detalhesTipo table td:nth-child(3) { width: 11ch; }
@@ -733,7 +731,6 @@ thead th.sortable.none .sort-arrow::after { content: ""; }
 .detalhe-registro td:first-child { border-left: 3px solid #93c5fd; }
 
 /* Item aberto */
-
 tr.grupo-aberto td {
   background: #ffffff !important;
   color: #1e3a8a !important;
@@ -772,7 +769,6 @@ tr.grupo-aberto .btn-expandir-detalhe:hover {
 .btn-expandir-detalhe:active { transform: scale(0.92); }
 
 /* ================= BOTÕES DESFAZER / REFAZER ================= */
-
 #btnDesfazer,
 #btnRefazer {
   transition: opacity 0.2s ease, visibility 0.2s ease;
@@ -796,34 +792,27 @@ tr.grupo-aberto .btn-expandir-detalhe:hover {
 #btnRefazer  { background: #64748b; color: white; }
 
 /* ================= MOBILE ================= */
-
 @media (max-width: 768px) {
-   .top-header { padding: 2px 155px 2px 6px; }
-  .titulo-conferencia { font-size: 17px; }
+  .top-header         { padding: 2px 10px; }
+  .titulo-conferencia { font-size: 15px; }
   table               { font-size: 11px; }
   th, td              { padding: 4px 2px; }
   .card               { padding: 8px; margin-top: 6px; }
   .btn-main           { padding: 8px; }
   .btn-scan-compact   { padding: 7px 8px; font-size: 12px; }
-
-  .cards-container { grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 8px; }
-
-  .card-total        { padding: 4px 6px; }
-  .card-total span   { font-size: 11px; margin: 0; }
-  .card-total strong { font-size: 13px; margin: 0; }
-
-  .barra               { height: 6px; margin-top: 3px; }
+  .cards-container    { grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 8px; }
+  .card-total         { padding: 4px 6px; }
+  .card-total span    { font-size: 11px; margin: 0; }
+  .card-total strong  { font-size: 13px; margin: 0; }
+  .barra              { height: 6px; margin-top: 3px; }
   .barra-preenchimento { font-size: 8px; padding-left: 4px; }
-
   #buscaEstoque,
-  #buscaHistorico { margin: 4px 0; padding: 8px; }
-
+  #buscaHistorico     { margin: 4px 0; padding: 8px; }
   #historico th,
-  #historico td { padding: 5px 3px; }
+  #historico td       { padding: 5px 3px; }
 }
 
 /* ================= MODO VISUALIZAÇÃO ================= */
-
 body.modo-visualizacao .nav-top,
 body.modo-visualizacao .cards-container,
 body.modo-visualizacao .filtro-periodo { display: none !important; }
@@ -838,10 +827,12 @@ body.modo-visualizacao #buscaHistorico {
 }
 
 body.modo-visualizacao .titulo-conferencia { visibility: hidden; }
-body.modo-visualizacao .top-header { 
-  background: #eef2f7; 
-  padding: 4px 155px; /* era 70px */
+
+body.modo-visualizacao .top-header {
+  background: #eef2f7;
+  padding: 4px 10px;
 }
+
 body.modo-visualizacao #btnExpandir { color: #dc2626; }
 
 body.modo-visualizacao #estoque th:last-child,
@@ -852,9 +843,7 @@ body.modo-visualizacao #historico td:last-child { display: none !important; }
 body.modo-visualizacao .detalhes-header { display: none !important; }
 
 /* ================= MODO ESCURO ================= */
-
 body.dark-mode { background: #0f172a; color: #e2e8f0; }
-
 body.dark-mode .top-header         { background: #0f172a; }
 body.dark-mode .titulo-conferencia { color: #f1f5f9; }
 body.dark-mode .nav-top            { border-bottom-color: #334155; }
@@ -916,15 +905,13 @@ body.dark-mode .linha-consumida td       { background: #3b3419 !important; color
 body.dark-mode .linha-excluida td,
 body.dark-mode .linha-saida td           { background: #3b1c1c !important; color: #fca5a5; }
 body.dark-mode .linha-consumo-parcial td { background: #1e3a5f !important; color: #93c5fd; }
-
-body.dark-mode .detalhe-registro td { background: #283548; color: #cbd5e1; }
-body.dark-mode .detalhe-legenda td  { background: #334155; color: #94a3b8; }
-
-body.dark-mode tr.grupo-aberto td { background: #1e293b !important; color: #60a5fa !important; }
-body.dark-mode .bobina-consumida td { color: #64748b; }
-body.dark-mode .btn-clear           { background: #991b1b; }
-body.dark-mode .last-item           { background: #854d0e !important; color: #fef08a !important; }
-body.dark-mode .btn-expandir-detalhe { background: #475569; color: #e2e8f0; }
+body.dark-mode .detalhe-registro td      { background: #283548; color: #cbd5e1; }
+body.dark-mode .detalhe-legenda td       { background: #334155; color: #94a3b8; }
+body.dark-mode tr.grupo-aberto td        { background: #1e293b !important; color: #60a5fa !important; }
+body.dark-mode .bobina-consumida td      { color: #64748b; }
+body.dark-mode .btn-clear                { background: #991b1b; }
+body.dark-mode .last-item                { background: #854d0e !important; color: #fef08a !important; }
+body.dark-mode .btn-expandir-detalhe     { background: #475569; color: #e2e8f0; }
 
 body.dark-mode tr.grupo-aberto .btn-expandir-detalhe {
   background: #3b82f6 !important;
@@ -940,11 +927,10 @@ body.dark-mode .modal-saida-tabela          { border-color: #475569; }
 body.dark-mode .modal-saida-tabela thead th { background: #334155; color: #e2e8f0; }
 body.dark-mode .modal-saida-header h3       { color: #f1f5f9; }
 body.dark-mode .saida-restante              { background: #3b1c1c; color: #fca5a5; }
-body.dark-mode .bobina-marcada td { background: #1e3a5f !important; color: #93c5fd; }
-
-body.dark-mode .toast               { background: #475569; }
-body.dark-mode .toast.toast-sucesso { background: #166334; }
-body.dark-mode .toast.toast-erro    { background: #991b1b; }
+body.dark-mode .bobina-marcada td           { background: #1e3a5f !important; color: #93c5fd; }
+body.dark-mode .toast                       { background: #475569; }
+body.dark-mode .toast.toast-sucesso         { background: #166334; }
+body.dark-mode .toast.toast-erro            { background: #991b1b; }
 
 body.dark-mode .suggestions,
 body.dark-mode .suggestions div     { background: #1e293b; border-color: #475569; color: #e2e8f0; }
@@ -954,6 +940,7 @@ body.dark-mode .btn-voltar,
 body.dark-mode .btn-limpar-filtro { background: #475569; }
 body.dark-mode .btn-icon          { color: #94a3b8; }
 body.dark-mode .btn-icon:hover    { color: #60a5fa; }
+
 body.dark-mode .ref-texto,
 body.dark-mode .entrada-status    { color: #94a3b8; }
 
@@ -969,7 +956,6 @@ body.dark-mode #btnDesfazer       { background: #3b82f6; }
 body.dark-mode #btnRefazer        { background: #475569; }
 
 /* ================= GERENCIAR CADASTRO ================= */
-
 .cadastro-acordeao {
   max-height: 60vh;
   overflow-y: auto;
@@ -1109,14 +1095,11 @@ body.dark-mode #btnRefazer        { background: #475569; }
 }
 
 /* ===== Modo escuro — cadastro ===== */
-
 body.dark-mode .cad-tipo-header       { background: #1e3a5f !important; color: #f1f5f9; }
 body.dark-mode .cad-tipo-header:hover { background: #234b7a !important; }
-
 body.dark-mode .cad-tipo[data-tipo="brf"]       .cad-tipo-header { color: #60a5fa; }
 body.dark-mode .cad-tipo[data-tipo="tampas"]    .cad-tipo-header { color: #4ade80; }
 body.dark-mode .cad-tipo[data-tipo="laminacao"] .cad-tipo-header { color: #fb923c; }
-
 body.dark-mode .cad-tipo-body                  { background: #1e293b; }
 body.dark-mode .cad-item                       { border-color: #475569; }
 body.dark-mode .cad-item-header                { background: #283548; color: #e2e8f0; }
@@ -1135,7 +1118,6 @@ body.dark-mode .cad-tipo-header .cad-seta,
 body.dark-mode .cad-item-header .cad-seta      { color: #94a3b8; }
 
 /* ================= HEADER CONFIG ================= */
-
 .config-header {
   display: flex;
   justify-content: space-between;
@@ -1202,6 +1184,7 @@ body.dark-mode .btn-menu-historico { background: #475569; }
 
 .btn-scan-qr       { background: #0f766e; color: white; font-weight: 600; }
 .btn-scan-continuo { background: #0e7490; color: white; font-weight: 600; }
+
 .btn-scan-qr:active,
 .btn-scan-continuo:active { transform: scale(0.97); }
 
@@ -1229,7 +1212,6 @@ body.dark-mode .btn-menu-historico { background: #475569; }
 }
 
 /* ================= DARK MODE SWITCH ================= */
-
 .dark-switch-row {
   justify-content: space-between;
   background: #eff6ff;
@@ -1292,7 +1274,6 @@ body.dark-mode .switch-slider         { background: #475569; }
 body.dark-mode .switch input:checked + .switch-slider { background: #3b82f6; }
 
 /* ================= EXPORT CARDS ================= */
-
 .export-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1409,14 +1390,15 @@ body.dark-mode .switch input:checked + .switch-slider { background: #3b82f6; }
 .export-periodo-toggle button { flex: 1; padding: 6px; min-height: 34px; }
 
 /* ===== Modo escuro — export ===== */
-
 body.dark-mode .export-card             { background: #283548; border-color: #475569; }
 body.dark-mode .export-card:hover       { border-color: #60a5fa; background: #1e3a5f; }
+
 body.dark-mode .export-card.selecionado {
   border-color: #3b82f6;
   background: #1e3a5f;
   box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
 }
+
 body.dark-mode .export-card .export-titulo { color: #f1f5f9; }
 body.dark-mode .export-card .export-desc   { color: #94a3b8; }
 body.dark-mode .export-etapa-titulo        { color: #cbd5e1; }
@@ -1436,7 +1418,6 @@ body.dark-mode .export-periodo-toggle button.selecionado {
 }
 
 /* ================= PREVIEW ETIQUETA ================= */
-
 .preview-etiqueta-container {
   display: flex;
   flex-direction: column;
@@ -1496,12 +1477,10 @@ body.dark-mode .preview-etiqueta-pagina     { color: #cbd5e1; }
 body.dark-mode .preview-info                { color: #64748b; }
 
 /* ================= BOTÕES MOVIMENTAÇÃO ================= */
-
 .btn-mov { flex: 1; margin: 0 !important; height: 42px; }
 #movimentar .input-row { margin: 2px 0; }
 
 /* ================= BOTÃO RESTAURAR LOCAL ================= */
-
 .btn-restaurar-local {
   background: #dbeafe !important;
   color: #1e3a8a !important;
@@ -1521,7 +1500,6 @@ body.dark-mode .btn-restaurar-local {
 }
 
 /* ================= MODAL CONFIG ================= */
-
 #modalConfig {
   position: fixed;
   inset: 0;
@@ -1531,13 +1509,8 @@ body.dark-mode .btn-restaurar-local {
   align-items: center;
 }
 
-#modalConfig.hidden {
-  display: none !important;
-}
-
-#modalConfig:not(.hidden) {
-  display: flex !important;
-}
+#modalConfig.hidden         { display: none !important; }
+#modalConfig:not(.hidden)   { display: flex !important; }
 
 #modalConfig .modal-content {
   width: 280px;
@@ -1563,9 +1536,7 @@ body.dark-mode .btn-restaurar-local {
 #configMenuPrincipal.hidden,
 #configTelaExportar.hidden,
 #configTelaBackup.hidden,
-#configTelaCadastro.hidden {
-  display: none !important;
-}
+#configTelaCadastro.hidden { display: none !important; }
 
 #configMenuPrincipal:not(.hidden),
 #configTelaExportar:not(.hidden),
@@ -1589,8 +1560,8 @@ body.dark-mode .btn-restaurar-local {
   align-items: center !important;
 }
 
-#configMenuPrincipal .btn-cancelar-opcao { justify-content: center !important; }
-#configMenuPrincipal .dark-switch-row { justify-content: space-between !important; }
+#configMenuPrincipal .btn-cancelar-opcao  { justify-content: center !important; }
+#configMenuPrincipal .dark-switch-row     { justify-content: space-between !important; }
 
 #configMenuPrincipal .dark-switch-row label.switch {
   margin: 0 !important;
@@ -1629,9 +1600,7 @@ body.dark-mode .btn-restaurar-local {
   width: 100%;
 }
 
-body.dark-mode #configTelaBackup .btn-voltar {
-  background: #475569;
-}
+body.dark-mode #configTelaBackup .btn-voltar { background: #475569; }
 
 @media (max-width: 768px) {
   #modalConfig .modal-content {
@@ -1642,7 +1611,6 @@ body.dark-mode #configTelaBackup .btn-voltar {
 }
 
 /* ================= GERADOR DE ETIQUETAS ================= */
-
 .gerador-passos {
   display: flex;
   gap: 0;
@@ -1764,17 +1732,8 @@ body.dark-mode #configTelaBackup .btn-voltar {
 .gerador-card-tipo.tipo-tampas    { background: #dcfce7; color: #166534; }
 .gerador-card-tipo.tipo-laminacao { background: #ffedd5; color: #9a3412; }
 
-.gerador-card-peso {
-  font-size: 14px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.gerador-card-detalhe {
-  font-size: 11px;
-  color: #64748b;
-  margin-top: 2px;
-}
+.gerador-card-peso    { font-size: 14px; font-weight: 700; color: #1e293b; }
+.gerador-card-detalhe { font-size: 11px; color: #64748b; margin-top: 2px; }
 
 .gerador-card-qtd {
   flex-shrink: 0;
@@ -1841,10 +1800,7 @@ body.dark-mode #configTelaBackup .btn-voltar {
   margin-left: 8px;
 }
 
-.gerador-bobina-acoes {
-  display: flex;
-  gap: 4px;
-}
+.gerador-bobina-acoes { display: flex; gap: 4px; }
 
 .gerador-bobina-acoes button {
   width: 28px;
@@ -1869,7 +1825,6 @@ body.dark-mode #configTelaBackup .btn-voltar {
 }
 
 /* ================= MODAL GERADOR ================= */
-
 #modalGerador { align-items: flex-end !important; }
 
 .modal-gerador-content {
@@ -1893,16 +1848,13 @@ body.dark-mode #configTelaBackup .btn-voltar {
 }
 
 /* ===== Modo escuro — gerador ===== */
-
 body.dark-mode .gerador-passos         { border-bottom-color: #334155; }
 body.dark-mode .gerador-passo          { color: #64748b; }
 body.dark-mode .gerador-passo.ativo    { color: #60a5fa; border-bottom-color: #60a5fa; }
 body.dark-mode .gerador-passo.completo { color: #4ade80; }
-
-body.dark-mode .gerador-passo-num { background: #334155; color: #94a3b8; }
+body.dark-mode .gerador-passo-num      { background: #334155; color: #94a3b8; }
 body.dark-mode .gerador-passo.ativo .gerador-passo-num    { background: #3b82f6; color: white; }
 body.dark-mode .gerador-passo.completo .gerador-passo-num { background: #16a34a; color: white; }
-
 body.dark-mode .gerador-card              { background: #283548; border-color: #475569; }
 body.dark-mode .gerador-card-header       { color: #e2e8f0; }
 body.dark-mode .gerador-card-header:hover { background: #334155; }
@@ -1926,7 +1878,6 @@ body.dark-mode .modal-gerador-content {
 }
 
 /* ================= BADGE PENDENTES ================= */
-
 .pendentes-badge {
   font-size: 11px;
   font-weight: 600;
@@ -1936,12 +1887,9 @@ body.dark-mode .modal-gerador-content {
   line-height: 1;
 }
 
-body.dark-mode .pendentes-badge {
-  color: #fbbf24;
-}
+body.dark-mode .pendentes-badge { color: #fbbf24; }
 
 /* ================= MENU HAMBÚRGUER ================= */
-
 #btnConfig {
   font-size: 22px;
   font-weight: 600;
@@ -1950,149 +1898,11 @@ body.dark-mode .pendentes-badge {
   transform: scaleX(1.05);
 }
 
-body.dark-mode #btnConfig {
-  color: #94a3b8;
-}
+body.dark-mode #btnConfig       { color: #94a3b8; }
+body.dark-mode #btnConfig:hover { color: #60a5fa; }
 
-body.dark-mode #btnConfig:hover {
-  color: #60a5fa;
-}
-
-/* ================= GERADOR PASSO 2 - CARDS BONITOS ================= */
-
-.gerador-card-tipo {
-  display: inline-block;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-right: 6px;
-  vertical-align: middle;
-}
-
-.gerador-card-tipo.tipo-brf {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.gerador-card-tipo.tipo-tampas {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.gerador-card-tipo.tipo-laminacao {
-  background: #ffedd5;
-  color: #9a3412;
-}
-
-.gerador-card-peso {
-  font-size: 14px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.gerador-card-detalhe {
-  font-size: 11px;
-  color: #64748b;
-  margin-top: 2px;
-}
-
-.gerador-bobina-linha {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 5px 0;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.gerador-bobina-linha:last-child {
-  border-bottom: none;
-}
-
-.gerador-bobina-num {
-  font-size: 11px;
-  font-weight: 700;
-  color: #1e3a8a;
-  background: #eff6ff;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.gerador-bobina-peso {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-  margin-left: 8px;
-}
-
-.gerador-bobina-acoes {
-  display: flex;
-  gap: 4px;
-}
-
-.gerador-bobina-acoes button {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  font-size: 12px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-}
-
-/* ===== Dark mode ===== */
-
-body.dark-mode .gerador-card-tipo.tipo-brf {
-  background: #1e3a5f;
-  color: #93c5fd;
-}
-
-body.dark-mode .gerador-card-tipo.tipo-tampas {
-  background: #1f3a2a;
-  color: #86efac;
-}
-
-body.dark-mode .gerador-card-tipo.tipo-laminacao {
-  background: #3b2510;
-  color: #fdba74;
-}
-
-body.dark-mode .gerador-card-peso {
-  color: #f1f5f9;
-}
-
-body.dark-mode .gerador-card-detalhe {
-  color: #94a3b8;
-}
-
-body.dark-mode .gerador-bobina-num {
-  background: #1e3a5f;
-  color: #93c5fd;
-}
-
-body.dark-mode .gerador-bobina-peso {
-  color: #e2e8f0;
-}
-
-body.dark-mode .gerador-bobina-linha {
-  border-bottom-color: #334155;
-}
-
-/* FEEDBACK VISUAL DA CÂMERA - MOVIMENTAÇÃO */
-.camera-feedback {
-  transition: all 0.4s ease;
-  position: relative;
-}
+/* ================= FEEDBACK VISUAL DA CÂMERA ================= */
+.camera-feedback { transition: all 0.4s ease; position: relative; }
 
 .camera-feedback.success {
   box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.4) !important;
@@ -2109,30 +1919,12 @@ body.dark-mode .gerador-bobina-linha {
   border: 4px solid #ef4444 !important;
 }
 
-/* ================= BOTÕES FIREBASE MANUAL ================= */
-
-
-/* ===== ESTADO LOADING SAVE ===== */
+/* ================= FIREBASE ================= */
 .firebase-loading {
   opacity: 0.5;
   pointer-events: none;
 }
 
-/* Feedback de sucesso (pisca verde) */
 .firebase-sucesso {
-  background: #16a34a !important;
-  transform: scale(1.1);
-}
-
-
-/* ===== HEADER BUTTONS ===== */
-.header-buttons {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex !important;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: nowrap;
+  color: #16a34a !important;
 }
