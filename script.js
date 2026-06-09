@@ -196,7 +196,21 @@ let historico = [];
 let etiquetasPendentes = [];
 
 function carregarDados() {
-  
+  let estoqueLocal = localStorage.getItem('estoque');
+  let historicoLocal = localStorage.getItem('historico');
+  if (estoqueLocal) estoque = JSON.parse(estoqueLocal);
+  if (historicoLocal) historico = JSON.parse(historicoLocal);
+  carregarBanco();
+  carregarPendentes();
+
+  let modoEscuro = localStorage.getItem('modoEscuro');
+  if (modoEscuro === 'true') {
+    document.body.classList.add('dark-mode');
+    let toggle = document.getElementById('darkModeToggle');
+    if (toggle) toggle.checked = true;
+    let icone = document.getElementById('darkModeIcon');
+    if (icone) icone.textContent = '☀️';
+  }
 }
 
 
