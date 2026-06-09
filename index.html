@@ -21,20 +21,33 @@
 
 <!-- ================= HEADER ================= -->
 <div class="top-header" id="appHeader">
-  <button id="btnDesfazer" class="btn-icon btn-undo" onclick="desfazerAcao()" title="Desfazer">↶</button>
+
+  <button id="btnDesfazer" class="btn-icon btn-undo"
+          onclick="desfazerAcao()" title="Desfazer">↶</button>
+
   <h1 class="titulo-conferencia">Conferência de Estoques</h1>
-  <button id="btnRefazer" class="btn-icon btn-redo" onclick="refazerAcao()" title="Refazer">↷</button>
+
+  <button id="btnRefazer" class="btn-icon btn-redo"
+          onclick="refazerAcao()" title="Refazer">↷</button>
+
   <div class="header-buttons">
-    <button id="btnConfig" class="btn-icon" onclick="abrirModalConfig()">☰</button>
-    <button id="btnExpandir" class="btn-icon" onclick="alternarModoVisualizacao()">⛶</button>
+    <button id="btnSalvarFirebase" class="btn-icon"
+            onclick="salvarManualFirebase()" title="Salvar na nuvem">💾</button>
+    <button id="btnSincronizarFirebase" class="btn-icon"
+            onclick="confirmarSincronizar()" title="Baixar da nuvem">🔄</button>
+    <button id="btnConfig" class="btn-icon"
+            onclick="abrirModalConfig()">☰</button>
+    <button id="btnExpandir" class="btn-icon"
+            onclick="alternarModoVisualizacao()">⛶</button>
   </div>
+
 </div>
 
-<!-- ================= NAVEGAÇÃO ================= -->
+<!-- ================= NAV ================= -->
 <div class="nav-top" id="appNav">
   <button onclick="mostrarTela('movimentar')" class="btn-main">Movimentação</button>
-  <button onclick="mostrarTela('estoque')" class="btn-main">Estoque</button>
-  <button onclick="mostrarTela('historico')" class="btn-main">Histórico</button>
+  <button onclick="mostrarTela('estoque')"    class="btn-main">Estoque</button>
+  <button onclick="mostrarTela('historico')"  class="btn-main">Histórico</button>
 </div>
 
 <!-- ================= MOVIMENTAR ================= -->
@@ -1004,6 +1017,39 @@ document.addEventListener('DOMContentLoaded', function() {
 
 </script>
 <script src="script.js?v=2005"></script>
+
+<!-- ================= MODAL CONFIRMAR SINCRONIZAR ================= -->
+<div class="modal-overlay hidden" id="modalConfirmarSync">
+  <div class="modal-opcoes-content" style="max-width:300px;width:90vw;">
+
+    <h3 style="margin:0 0 6px;font-size:16px;text-align:center;">☁️ Baixar da nuvem</h3>
+
+    <p style="font-size:13px;color:#475569;text-align:center;margin:0 0 10px;line-height:1.4;">
+      Isso vai substituir os dados locais pelos dados salvos na nuvem.<br>
+      Alterações não salvas serão perdidas.
+    </p>
+
+    <div id="syncDataSalva"
+         style="text-align:center;font-size:12px;font-weight:700;
+                color:#1e3a8a;background:#eff6ff;
+                border-radius:8px;padding:8px 12px;margin-bottom:14px;">
+      Último save: --/-- --:--
+    </div>
+
+    <button class="btn-opcao btn-confirmar"
+            style="width:100%;margin-bottom:6px;text-align:center;"
+            onclick="executarSincronizar()">
+      ✅ Confirmar download
+    </button>
+
+    <button class="btn-opcao btn-cancelar-opcao"
+            style="width:100%;text-align:center;"
+            onclick="fecharModalSync()">
+      Cancelar
+    </button>
+
+  </div>
+</div>
 
 </body>
 </html>
