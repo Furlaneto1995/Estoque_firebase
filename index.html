@@ -875,28 +875,6 @@ atualizarCampoDataManualGerador();
   });
 };
 
-  // Alternar modo de armazenamento
-  window.alternarModoArmazenamento = function() {
-    usarFirebase = !usarFirebase;
-    localStorage.setItem('usarFirebase', usarFirebase);
-
-    let toggle = document.getElementById('armazenamentoToggle');
-    let icone = document.getElementById('armazenamentoIcon');
-    let texto = document.getElementById('armazenamentoTexto');
-
-    if (toggle) toggle.checked = usarFirebase;
-    if (icone) icone.textContent = usarFirebase ? '🌐' : '📱';
-    if (texto) texto.textContent = usarFirebase ? 'Firebase' : 'Local';
-
-    if (usarFirebase) {
-      escutarFirebase();
-      salvarNoFirebase();
-      mostrarToast('Modo Firebase ativado');
-    } else {
-      mostrarToast('Modo Local ativado');
-    }
-  };
-
 
 </script>
 <script src="script.js?v=2005"></script>
