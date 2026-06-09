@@ -196,47 +196,15 @@ let historico = [];
 let etiquetasPendentes = [];
 
 function carregarDados() {
-  carregarBanco();
-  estoque = JSON.parse(localStorage.getItem("estoque")) || {};
-  historico = JSON.parse(localStorage.getItem("historico")) || [];
-
-  historico.forEach(h => {
-    if (h.tipo === "Entrada" && (!h.id || typeof h.id === 'number')) {
-      h.id = crypto.randomUUID();
-    }
-  });
-
-  if (localStorage.getItem('modoEscuro') === 'true') {
-    document.body.classList.add('dark-mode');
-    let toggle = document.getElementById('darkModeToggle');
-    if (toggle) toggle.checked = true;
-    let icone = document.getElementById('darkModeIcon');
-    if (icone) icone.textContent = '☀️';
-  }
-
-  carregarPendentes();
-  salvarDados();
-  atualizarTabela();
-  atualizarHistorico();
-
-  if (sessionStorage.getItem('logado') === 'true') {
-    let header = document.getElementById('appHeader');
-    let nav = document.getElementById('appNav');
-    if (header) header.style.display = '';
-    if (nav) nav.style.display = '';
-  }
-
-  if (typeof escutarFirebase === 'function') {
-    escutarFirebase();
-  }
+  
 }
+
 
 function salvarDados() {
   localStorage.setItem("estoque", JSON.stringify(estoque));
   localStorage.setItem("historico", JSON.stringify(historico));
-  if (typeof salvarNoFirebase === 'function') {
-    salvarNoFirebase();
-  }
+  // ❌ Removido: sincronização automática com Firebase
+  // Agora é manual via botão "Sincronizar"
 }
 
 /* ================= BANCO NO LOCALSTORAGE ================= */
@@ -4413,7 +4381,7 @@ function carregarPendentes() {
 function salvarPendentes() {
   localStorage.setItem('etiquetasPendentes', JSON.stringify(etiquetasPendentes));
   atualizarBotaoPendentesConfig();
-  if (typeof salvarNoFirebase === 'function') salvarNoFirebase();
+  // ❌ Removido: sincronização automática
 }
 
 function atualizarBotaoPendentesConfig() {
@@ -4623,7 +4591,6 @@ function salvarOpcaoData(opcao) {
   localStorage.setItem('opcaoDataProducao', opcao);
   atualizarCampoDataManualGerador();
   mostrarToast('Data de produção: ' + nomeOpcaoData(opcao));
-  if (typeof salvarNoFirebase === 'function') salvarNoFirebase();
 }
 
 function nomeOpcaoData(opcao) {
@@ -5114,6 +5081,111 @@ function confExportarResultado() {
   XLSX.writeFile(wb, 'Conferencia_' + getTimestamp() + '.xlsx');
   mostrarToast('Relatório exportado');
 }
+
+/* ================= FIREBASE MANUAL (SALVAR / SINCRONIZAR) ================= */
+
+async function salvarManualFirebase() {
+  let btn = document.getElementById('btnSalvarFirebase');
+  if (btn) {
+    btn.classList.add('firebase-loading');
+    btn.textContent = '⏳'; // troca ícone durante o save
+  }
+
+  try {
+    if (typeof salvarNoFirebase !== 'function') {
+      mostrarToast('Firebase não configurado', 'erro');
+      return;
+    }
+
+    await salvarNoFirebase();
+
+    const agora = new Date();
+    const dataHora = agora.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}) +
+                     ' ' +
+                     agora.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+    localStorage.setItem('ultimaSincronizacao', dataHora);
+
+    if (navigator.vibrate) navigator.vibrate([80]);
+
+    // Troca para ✅ por 1.5s depois volta ao 💾
+    if (btn) {
+      btn.classList.remove('firebase-loading');
+      btn.textContent = '✅';
+      setTimeout(() => { btn.textContent = '💾'; }, 1500);
+    }
+
+    mostrarToast('☁️ Salvo na nuvem');
+
+  } catch (e) {
+    mostrarToast('Erro ao salvar', 'erro');
+    if (btn) {
+      btn.textContent = '❌';
+      setTimeout(() => { btn.textContent = '💾'; }, 1500);
+    }
+  } finally {
+    if (btn) btn.classList.remove('firebase-loading');
+  }
+}
+
+async function sincronizarManualFirebase() {
+  let btn = document.getElementById('btnSincronizarFirebase');
+  if (btn) btn.classList.add('firebase-loading');
+  
+  try {
+    if (typeof escutarFirebase !== 'function' && typeof baixarDoFirebase !== 'function') {
+      mostrarToast('Firebase não configurado', 'erro');
+      return;
+    }
+    
+    
+    // Tenta usar baixarDoFirebase() se existir, senão usa escutarFirebase()
+    if (typeof baixarDoFirebase === 'function') {
+      await baixarDoFirebase();
+    } else {
+      await escutarFirebase();
+    }
+    
+    atualizarTudo();
+    
+    if (navigator.vibrate) navigator.vibrate([80]);
+    mostrarToast('☁️ Sincronizado da nuvem');
+    
+    if (btn) {
+      btn.classList.add('firebase-sucesso');
+      setTimeout(() => btn.classList.remove('firebase-sucesso'), 1500);
+    }
+  } catch (e) {
+    console.error('Erro ao sincronizar:', e);
+    mostrarToast('Erro ao sincronizar', 'erro');
+  } finally {
+    if (btn) btn.classList.remove('firebase-loading');
+  }
+}
+
+window.salvarManualFirebase = salvarManualFirebase;
+window.sincronizarManualFirebase = sincronizarManualFirebase;
+
+/* ================= MODAL CONFIRMAR SINCRONIZAR ================= */
+
+function confirmarSincronizar() {
+  const ultimaData = localStorage.getItem('ultimaSincronizacao') || 'Nunca salvo';
+  const labelData = document.getElementById('syncDataSalva');
+  if (labelData) labelData.textContent = 'Último save: ' + ultimaData;
+  document.getElementById('modalConfirmarSync').classList.remove('hidden');
+}
+
+function fecharModalSync() {
+  document.getElementById('modalConfirmarSync').classList.add('hidden');
+}
+
+async function executarSincronizar() {
+  fecharModalSync();
+  await sincronizarManualFirebase();
+}
+
+window.confirmarSincronizar = confirmarSincronizar;
+window.fecharModalSync = fecharModalSync;
+window.executarSincronizar = executarSincronizar;
 
 /* ================= EXPOSIÇÃO GLOBAL ================= */
 
