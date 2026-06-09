@@ -471,7 +471,7 @@
         <span id="btnPendentesContador" class="pendentes-badge" style="display:none;"></span>
       </button>
       <button class="btn-opcao btn-editar-opcao" onclick="abrirConfigDataProducao()">📅 Data de produção</button>
-              <button class="btn-opcao btn-editar-opcao" onclick="abrirConferencia()">📋 Conferência</button>
+              <button class="btn-opcao btn-editar-opcao" onclick="abrirInicioConferencia()">📋 Conferência</button>
       <div class="btn-opcao dark-switch-row" onclick="alternarModoEscuro()">
         <div class="dark-switch-label">
           <span id="darkModeIcon">🌙</span>
@@ -599,6 +599,63 @@
     <button class="btn-opcao btn-cancelar-opcao" onclick="fecharConfigDataProducao()">Fechar</button>
   </div>
 </div>
+
+<!-- ================= MODAL USUÁRIO CONFERÊNCIA ================= -->
+<div class="modal-overlay hidden" id="modalInicioConferencia">
+  <div class="modal-opcoes-content" style="max-width:300px;width:90vw;gap:12px;">
+
+    <h3 style="margin:0;text-align:center;font-size:16px;">📋 Iniciar Conferência</h3>
+
+    <!-- Nome do usuário -->
+    <div id="confNomeContainer">
+      <label style="font-size:13px;color:#475569;font-weight:600;margin-bottom:4px;display:block;">
+        Seu nome neste dispositivo:
+      </label>
+      <div style="display:flex;gap:6px;">
+        <input id="confNomeInput" type="text" placeholder="Ex: João"
+               style="flex:1;margin:0;padding:8px 10px;font-size:14px;border-radius:8px;"
+               maxlength="20">
+        <button onclick="salvarNomeConferencia()"
+                style="width:auto;padding:0 14px;background:#1e3a8a;border-radius:8px;font-size:13px;margin:0;">
+          ✓
+        </button>
+      </div>
+      <div id="confNomeSalvo" style="font-size:12px;color:#16a34a;margin-top:4px;display:none;">
+        ✅ Nome salvo!
+      </div>
+    </div>
+
+    <!-- Quantos usuários -->
+    <div>
+      <label style="font-size:13px;color:#475569;font-weight:600;margin-bottom:6px;display:block;">
+        Quantos usuários vão conferir?
+      </label>
+      <div style="display:flex;gap:8px;">
+        <button onclick="selecionarModoConferencia(1)"
+                id="confBtn1usuario"
+                class="btn-opcao btn-editar-opcao"
+                style="flex:1;text-align:center;padding:10px;">
+          👤 Só eu
+        </button>
+        <button onclick="selecionarModoConferencia(2)"
+                id="confBtn2usuarios"
+                class="btn-opcao btn-editar-opcao"
+                style="flex:1;text-align:center;padding:10px;">
+          👥 Dois
+        </button>
+      </div>
+    </div>
+
+    <button class="btn-opcao btn-cancelar-opcao"
+            style="text-align:center;"
+            onclick="fecharInicioConferencia()">
+      Cancelar
+    </button>
+
+  </div>
+</div>
+
+
 <!-- ================= MODAL CONFERÊNCIA ================= -->
 <div id="modalConferencia" class="modal-overlay hidden">
   <div class="modal-gerador-content">
@@ -667,7 +724,7 @@
       <!-- Botões -->
       <div style="display:flex; gap:8px; padding-top:6px; border-top:1px solid #e2e8f0;">
         <button class="btn-cancelar" onclick="pausarConferencia()" style="flex:1;">⏸ Pausar</button>
-        <button class="btn-confirmar" onclick="finalizarConferencia()" style="flex:1;">✅ Finalizar</button>
+        <button class="btn-confirmar" onclick="confFinalizarColaborativo()" style="flex:1;">✅ Finalizar</button>
       </div>
     </div>
 
@@ -698,11 +755,25 @@
       <div id="confListaResultado" style="flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:4px; -webkit-overflow-scrolling:touch;"></div>
 
       <!-- Botões -->
-      <div style="display:flex; flex-direction:column; gap:6px; padding-top:6px; border-top:1px solid #e2e8f0;">
-        <button class="btn-main" onclick="confExportarResultado()">📊 Exportar relatório</button>
-        <button class="btn-confirmar" onclick="confAjustarEstoque()">🔧 Ajustar estoque</button>
-        <button class="btn-cancelar" onclick="fecharConferencia()">✕ Fechar</button>
-      </div>
+<div style="display:flex; flex-direction:column; gap:6px; padding-top:6px; border-top:1px solid #e2e8f0;">
+
+  <!-- Aparece quando está aguardando o outro usuário -->
+  <div id="confAguardandoContainer" style="display:none; text-align:center; padding:10px; background:#eff6ff; border-radius:8px;">
+    <div style="font-size:13px; font-weight:600; color:#1e3a8a;">⏳ Aguardando o outro usuário finalizar...</div>
+    <div id="confAguardandoNome" style="font-size:12px; color:#64748b; margin-top:4px;"></div>
+  </div>
+
+  <!-- Aparece quando os dois finalizaram -->
+  <button id="btnJuntarConferencias" class="btn-confirmar"
+          style="display:none; background:#1e3a8a;"
+          onclick="juntarConferencias()">
+    🔗 Juntar conferências
+  </button>
+
+  <button class="btn-main" onclick="confExportarResultado()">📊 Exportar relatório</button>
+  <button class="btn-confirmar" onclick="confAjustarEstoque()">🔧 Ajustar estoque</button>
+  <button class="btn-cancelar" onclick="fecharConferencia()">✕ Fechar</button>
+</div>
     </div>
 
   </div>
