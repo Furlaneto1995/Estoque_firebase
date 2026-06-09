@@ -5393,47 +5393,39 @@ async function confFinalizarColaborativo() {
       ultimaAtualizacao: new Date().toISOString()
     });
 
+    // Mostra tela de resultado primeiro
     finalizarConferencia();
 
-    // Verifica se o outro já finalizou
     let aguardando = document.getElementById('confAguardandoContainer');
     let btnJuntar = document.getElementById('btnJuntarConferencias');
 
-    let snapshot = await db.collection('conferencias').get();
-    let todasFinalizadas = [];
-    snapshot.forEach(doc => {
-      let d = doc.data();
-      if (d.finalizada) todasFinalizadas.push(d);
+    // Mostra aguardando imediatamente
+    if (aguardando) aguardando.style.display = 'block';
+    if (btnJuntar) btnJuntar.style.display = 'none';
+
+    // Escuta Firebase até os dois finalizarem
+    let listener = db.collection('conferencias').onSnapshot(snap => {
+      let finalizadas = [];
+      snap.forEach(doc => {
+        let d = doc.data();
+        console.log('Doc encontrado:', doc.id, 'finalizada:', d.finalizada);
+        if (d.finalizada === true) finalizadas.push(d);
+      });
+
+      console.log('Total finalizadas:', finalizadas.length);
+
+      if (finalizadas.length >= 2) {
+        // Para de escutar
+        listener();
+
+        if (btnJuntar) btnJuntar.style.display = 'block';
+        if (aguardando) aguardando.style.display = 'none';
+
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        mostrarToast('Os dois finalizaram! Clique em Juntar.');
+      }
     });
 
-    if (todasFinalizadas.length >= 2) {
-      // Os dois finalizaram — pode juntar
-      if (btnJuntar) btnJuntar.style.display = 'block';
-      if (aguardando) aguardando.style.display = 'none';
-      mostrarToast('Os dois finalizaram! Clique em Juntar.');
-    } else {
-      // Aguardando o outro
-      if (aguardando) {
-        aguardando.style.display = 'block';
-        let nomeEl = document.getElementById('confAguardandoNome');
-        if (nomeEl) nomeEl.textContent = 'Sua parte já foi enviada. Aguardando...';
-      }
-
-      // Escuta o Firebase até o outro finalizar
-      db.collection('conferencias').onSnapshot(snap => {
-        let finalizadas = [];
-        snap.forEach(doc => {
-          let d = doc.data();
-          if (d.finalizada) finalizadas.push(d);
-        });
-        if (finalizadas.length >= 2) {
-          if (btnJuntar) btnJuntar.style.display = 'block';
-          if (aguardando) aguardando.style.display = 'none';
-          if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-          mostrarToast('Os dois finalizaram! Clique em Juntar.');
-        }
-      });
-    }
   } catch(e) {
     console.error('Erro ao finalizar colaborativo:', e);
     finalizarConferencia();
