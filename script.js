@@ -3053,16 +3053,20 @@ function interpretarQRSimplificado(texto) {
 }
 
 function localizarRegistroPorQR(dados) {
-  // PRIORIDADE: ID curto único
-  if (dados.bobinaId) {
+  // ID curto procurado (do campo bobinaId OU extraído do texto do QR)
+  let idCurtoProcurado = dados.bobinaId || extrairIdCurtoBobina(dados.id);
+
+  // Se o QR TEM id curto, ele é a fonte da verdade:
+  // achou bobina com mesmo id => retorna; não achou => NOVA (não usa fallback)
+  if (idCurtoProcurado) {
     let encontrada = historico.find(function(h) {
       if (!h || h.tipo !== "Entrada") return false;
-      return extrairIdCurtoBobina(h.id) === dados.bobinaId;
+      return extrairIdCurtoBobina(h.id) === idCurtoProcurado;
     });
-    if (encontrada) return encontrada;
+    return encontrada || null;
   }
 
-  // FALLBACK para etiquetas sem ID — busca por item/versao/peso/data
+  // FALLBACK só para etiquetas ANTIGAS sem ID — busca por item/versao/peso
   let candidatos = historico.filter(function(h) {
     if (!h || h.tipo !== "Entrada") return false;
     let partes = h.item.split(" - V");
@@ -3072,7 +3076,6 @@ function localizarRegistroPorQR(dados) {
       Math.round(Number(h.qtd)) === Math.round(Number(dados.peso));
   });
 
-  // Se tem data, tenta refinar
   if (dados.dataBruta && candidatos.length > 1) {
     let dataNumQR = String(dados.dataBruta).replace(/[^0-9]/g, '');
     let comData = candidatos.filter(function(h) {
@@ -3204,7 +3207,7 @@ function entradaRapidaQR() {
   }
   salvarEstadoParaDesfazer();
 let identificador = item + " - V" + versao;
-let idSalvar = dados.id || crypto.randomUUID();
+let idSalvar = dados.bobinaId || extrairIdCurtoBobina(dados.id) || crypto.randomUUID().replace(/-/g, '').substring(0, 8);
   estoque[identificador] = (estoque[identificador] || 0) + peso;
   estoque[identificador + "_qtd"] = (estoque[identificador + "_qtd"] || 0) + 1;
   let dataFinal = (opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : (dados.data || new Date().toLocaleString('pt-BR'));
@@ -3364,7 +3367,7 @@ async function processarLeituraContinua(textoLido) {
   let identificador = item + " - V" + versao;
   estoque[identificador] = (estoque[identificador] || 0) + peso;
   estoque[identificador + "_qtd"] = (estoque[identificador + "_qtd"] || 0) + 1;
-  let idSalvar = dados.id || crypto.randomUUID();
+  let idSalvar = dados.bobinaId || extrairIdCurtoBobina(dados.id) || crypto.randomUUID().replace(/-/g, '').substring(0, 8);
   let dataFinal = (opcaoDataProducao === 'entrada') ? new Date().toLocaleString('pt-BR') : (dados.data || new Date().toLocaleString('pt-BR'));
   historico.push({
     id: idSalvar,
