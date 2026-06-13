@@ -57,6 +57,7 @@
     <option value="">Selecionar tipo</option>
     <option value="brf">BRF</option>
     <option value="tampas">Tampas</option>
+    <option value="fundo">Fundo</option>
     <option value="laminacao">1ª Laminação</option>
   </select>
 
@@ -114,6 +115,11 @@
       <strong id="totalTampas">0 kg</strong>
       <div class="barra"><div id="barraTampas" class="barra-preenchimento"></div></div>
     </div>
+   <div class="card-total fundo clicavel" onclick="abrirDetalhes('fundo')">
+  <span>Fundo</span>
+  <strong id="totalFundo">0 kg</strong>
+  <div class="barra"><div id="barraFundo" class="barra-preenchimento"></div></div>
+</div>
     <div class="card-total laminacao clicavel" onclick="abrirDetalhes('laminacao')">
       <span>1ª Laminação</span>
       <strong id="totalLaminacao">0 kg</strong>
@@ -246,7 +252,8 @@
         <select id="geradorTipo" onchange="geradorFiltrarTipo()">
           <option value="">Selecionar tipo</option>
           <option value="brf">BRF</option>
-          <option value="tampas">Tampas</option>
+          <option value="tampas">Tampa</option>
+	  <option value="fundo">Fundo</option>
           <option value="laminacao">1ª Laminação</option>
         </select>
 
@@ -682,6 +689,10 @@
     <input type="radio" name="confTipo" value="tampas" style="width:20px; height:20px; margin:0;">
     Tampas
   </label>
+<label style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:8px; margin-bottom:5px; cursor:pointer; font-size:14px;">
+  <input type="radio" name="confTipo" value="fundo" style="width:20px; height:20px; margin:0;">
+  Fundo
+</label>
   <label style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:8px; margin-bottom:5px; cursor:pointer; font-size:14px;">
     <input type="radio" name="confTipo" value="laminacao" style="width:20px; height:20px; margin:0;">
     1ª Laminação
