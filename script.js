@@ -20,6 +20,7 @@ function formatarPeso(valor) {
 function nomeBonitoTipo(tipo){
   if(tipo === "brf") return "BRF";
   if(tipo === "tampas") return "Tampa";
+  if(tipo === "fundo") return "Fundo";
   if(tipo === "laminacao") return "1ª Lam.";
   return tipo;
 }
@@ -27,6 +28,7 @@ function nomeBonitoTipo(tipo){
 function nomeCompletoTipo(tipo){
   if(tipo === "brf") return "BRF";
   if(tipo === "tampas") return "Tampas";
+  if(tipo === "fundo") return "Fundo";
   if(tipo === "laminacao") return "1ª Laminação";
   return tipo;
 }
@@ -125,6 +127,8 @@ const saldoAtual = document.getElementById("saldoAtual");
 const totalGeralLabel = document.getElementById("totalGeral");
 const totalBrfLabel = document.getElementById("totalBrf");
 const totalTampasLabel = document.getElementById("totalTampas");
+const totalFundoLabel = document.getElementById("totalFundo");
+const barraFundo = document.getElementById("barraFundo");
 const totalLaminacaoLabel = document.getElementById("totalLaminacao");
 const barraBrf = document.getElementById("barraBrf");
 const barraTampas = document.getElementById("barraTampas");
@@ -180,6 +184,7 @@ const bancoPadrao = {
     "1500768": { "6": { tamanho: "91.5 x 58" } },
     "1500483": { "3": { tamanho: "101 x 58" } }
   },
+fundo: {},
   laminacao: {
     "175813-4":  { "01":  { tamanho: "87.5 x 78" } },
     "168383-4":  { "02":  { tamanho: "58.5 x 76" } },
@@ -488,7 +493,7 @@ function ordenarEstoque(coluna) {
     if (filtroTipoEstoque > 3) filtroTipoEstoque = 0;
     let thTipo = document.querySelector('#estoque thead th[onclick="ordenarEstoque(\'tipo\')"]');
     if (thTipo) {
-      let letras = ['', 'B', 'T', '1ª'];
+      let letras = ['', 'B', 'T', 'F', '1ª'];;
       thTipo.innerHTML = 'Tipo<span class="sort-arrow">' + (letras[filtroTipoEstoque] ? ' (' + letras[filtroTipoEstoque] + ')' : '') + '</span>';
     }
     atualizarTabela();
@@ -511,7 +516,7 @@ function atualizarTabela(){
   const tabela = document.getElementById('tabela');
   tabela.innerHTML='';
   let termo = document.getElementById('buscaEstoque').value.toLowerCase();
-  let pesoTotal = 0, totalBrf = 0, totalTampas = 0, totalLaminacao = 0;
+  let pesoTotal = 0, totalBrf = 0, totalTampas = 0, totalLaminacao = 0, totalFundo = 0;
 
   let dados = Object.keys(estoque)
     .filter(i => !i.endsWith('_qtd'))
@@ -539,6 +544,7 @@ function atualizarTabela(){
       pesoTotal += peso;
       if (tipoEncontrado === "brf") totalBrf += peso;
       if (tipoEncontrado === "tampas") totalTampas += peso;
+      if (tipoEncontrado === "fundo") totalFundo += peso;
       if (tipoEncontrado === "laminacao") totalLaminacao += peso;
       return { identificador: i, tipo: tipoEncontrado, item, versao, tamanho, peso, qtdEntradas: quantidadeEntradas };
     })
@@ -546,13 +552,13 @@ function atualizarTabela(){
     .filter(d => `${d.tipo} ${d.item} ${d.versao} ${d.tamanho} ${d.peso}`.toLowerCase().includes(termo));
 
   if (filtroTipoEstoque > 0) {
-    let prioridades = [null, 'brf', 'tampas', 'laminacao'];
+    let prioridades = [null, 'brf', 'tampas', 'fundo', 'laminacao'];
     let tipoPrioritario = prioridades[filtroTipoEstoque];
     dados.sort((a, b) => {
       let aPri = (a.tipo === tipoPrioritario) ? 0 : 1;
       let bPri = (b.tipo === tipoPrioritario) ? 0 : 1;
       if (aPri !== bPri) return aPri - bPri;
-      let ordem = { 'brf': 1, 'tampas': 2, 'laminacao': 3 };
+      let ordem = { 'brf': 1, 'tampas': 2, 'fundo': 3, 'laminacao': 4 };
       return (ordem[a.tipo] || 4) - (ordem[b.tipo] || 4);
     });
   }
@@ -581,10 +587,12 @@ function atualizarTabela(){
   if(totalBobinasLabel) totalBobinasLabel.textContent = totalBobinasCount + " bobinas";
   if(totalBrfLabel) totalBrfLabel.innerHTML = formatarPeso(totalBrf) + " kg";
   if(totalTampasLabel) totalTampasLabel.innerHTML = formatarPeso(totalTampas) + " kg";
+  if(totalFundoLabel) totalFundoLabel.innerHTML = formatarPeso(totalFundo) + " kg";
   if(totalLaminacaoLabel) totalLaminacaoLabel.innerHTML = formatarPeso(totalLaminacao) + " kg";
 
   let percBrf = pesoTotal ? (totalBrf/pesoTotal)*100 : 0;
   let percTampas = pesoTotal ? (totalTampas/pesoTotal)*100 : 0;
+  let percFundo = pesoTotal ? (totalFundo/pesoTotal)*100 : 0;
   let percLaminacao = pesoTotal ? (totalLaminacao/pesoTotal)*100 : 0;
 
   function atualizarBarra(barra, percentual) {
@@ -595,6 +603,7 @@ function atualizarTabela(){
 
   if (barraBrf) atualizarBarra(barraBrf, percBrf);
   if (barraTampas) atualizarBarra(barraTampas, percTampas);
+  if (barraFundo) atualizarBarra(barraFundo, percFundo);
   if (barraLaminacao) atualizarBarra(barraLaminacao, percLaminacao);
 
   let html = '';
@@ -651,10 +660,11 @@ function remover(item){
 function ordenarHistorico(coluna) {
   if (coluna === 'tipo') {
     filtroTipoHistorico++;
-    if (filtroTipoHistorico > 3) filtroTipoHistorico = 0;
+    if (filtroTipoHistorico > 4) filtroTipoHistorico = 0;  // ← era 3, agora 4
+
     let thTipo = document.querySelector('#historico thead th[onclick="ordenarHistorico(\'tipo\')"]');
     if (thTipo) {
-      let letras = ['', 'B', 'T', '1ª'];
+      let letras = ['', 'B', 'T', 'F', '1ª'];  // ← ADICIONADO 'F'
       thTipo.innerHTML = 'Tipo<span class="sort-arrow">' + (letras[filtroTipoHistorico] ? ' (' + letras[filtroTipoHistorico] + ')' : '') + '</span>';
     }
     atualizarHistorico();
@@ -733,15 +743,15 @@ function atualizarHistorico(){
 
   dados.reverse();
 
-  if (filtroTipoHistorico > 0) {
-    let prioridades = [null, 'brf', 'tampas', 'laminacao'];
+    if (filtroTipoHistorico > 0) {
+    let prioridades = [null, 'brf', 'tampas', 'fundo', 'laminacao'];  // ← ADICIONADO 'fundo'
     let tipoPrioritario = prioridades[filtroTipoHistorico];
     dados.sort((a, b) => {
       let aPri = (a.tipo === tipoPrioritario) ? 0 : 1;
       let bPri = (b.tipo === tipoPrioritario) ? 0 : 1;
       if (aPri !== bPri) return aPri - bPri;
-      let ordem = { 'brf': 1, 'tampas': 2, 'laminacao': 3 };
-      return (ordem[a.tipo] || 4) - (ordem[b.tipo] || 4);
+      let ordem = { 'brf': 1, 'tampas': 2, 'fundo': 3, 'laminacao': 4 };  // ← ADICIONADO
+      return (ordem[a.tipo] || 5) - (ordem[b.tipo] || 5);
     });
   }
 
@@ -895,7 +905,7 @@ function exportarEstoque(dataInicioP, dataFimP) {
 
   if (dadosEstoque.length === 0) { mostrarToast("Estoque vazio", "erro"); return; }
 
-  let ordemTipo = { 'BRF': 1, 'Tampa': 2, '1ª Lam.': 3 };
+  let ordemTipo = { 'BRF': 1, 'Tampa': 2, 'Fundo': 3, '1ª Lam.': 4 };
   dadosEstoque.sort((a, b) => (ordemTipo[a.Tipo] || 99) - (ordemTipo[b.Tipo] || 99));
 
   let linhas = [];
@@ -908,7 +918,7 @@ function exportarEstoque(dataInicioP, dataFimP) {
   linhas.push(['RESUMO POR TIPO', '', '', '', '', '']);
   linhas.push(['Tipo', '', '', '', 'Kg', 'Bobinas']);
 
-  ['BRF', 'Tampas', '1ª Laminação'].forEach(nomeT => {
+  ['BRF', 'Tampas', 'Fundo', '1ª Laminação'].forEach(nomeT => {
     if (totaisPorTipo[nomeT]) {
       let perc = totalGeral > 0 ? Math.round((totaisPorTipo[nomeT].kg / totalGeral) * 100) : 0;
       linhas.push([nomeT, '', '', perc + '%', formatarPeso(totaisPorTipo[nomeT].kg) + ' kg', totaisPorTipo[nomeT].bobinas + ' bobinas']);
@@ -1011,7 +1021,7 @@ function exportarAmbos(dataInicioP, dataFimP) {
     dadosEstoque.push({ Tipo: nomeBonitoTipo(tipoInterno), Item: item, Versão: versao, Medidas: tamanho, Kg: peso, Bobinas: qtdBobinas });
   });
 
-  let ordemTipo = { 'BRF': 1, 'Tampa': 2, '1ª Lam.': 3 };
+  let ordemTipo = { 'BRF': 1, 'Tampa': 2, 'Fundo': 3, '1ª Lam.': 4 };
   dadosEstoque.sort((a, b) => (ordemTipo[a.Tipo] || 99) - (ordemTipo[b.Tipo] || 99));
 
   let linhasEstoque = [];
@@ -1024,7 +1034,7 @@ function exportarAmbos(dataInicioP, dataFimP) {
   linhasEstoque.push(['RESUMO POR TIPO', '', '', '', '', '']);
   linhasEstoque.push(['Tipo', '', '', '', 'Kg', 'Bobinas']);
 
-  ['BRF', 'Tampas', '1ª Laminação'].forEach(nomeT => {
+  ['BRF', 'Tampas', 'Fundo', '1ª Laminação'].forEach(nomeT => {
     if (totaisPorTipo[nomeT]) {
       let perc = totalGeral > 0 ? Math.round((totaisPorTipo[nomeT].kg / totalGeral) * 100) : 0;
       linhasEstoque.push([nomeT, '', '', perc + '%', formatarPeso(totaisPorTipo[nomeT].kg) + ' kg', totaisPorTipo[nomeT].bobinas + ' bobinas']);
@@ -1132,7 +1142,7 @@ function exportarEstoquePDF(dataInicioP, dataFimP) {
 
   if (dadosEstoque.length === 0) { mostrarToast('Estoque vazio', 'erro'); return; }
 
-  let ordemTipo = { 'BRF': 1, 'Tampa': 2, '1ª Lam.': 3 };
+  let ordemTipo = { 'BRF': 1, 'Tampa': 2, 'Fundo':3, '1ª Lam.': 4 };
   dadosEstoque.sort((a, b) => (ordemTipo[a[0]] || 99) - (ordemTipo[b[0]] || 99));
 
   doc.setFillColor(30, 58, 138);
@@ -1155,7 +1165,7 @@ function exportarEstoquePDF(dataInicioP, dataFimP) {
 
   resumoY += 5;
   let tiposTexto = [];
-  ['BRF', 'Tampas', '1ª Laminação'].forEach(nomeT => {
+  ['BRF', 'Tampas', 'Fundo', '1ª Laminação'].forEach(nomeT => {
     if (totaisPorTipo[nomeT]) {
       let perc = totalGeral > 0 ? Math.round((totaisPorTipo[nomeT].kg / totalGeral) * 100) : 0;
       tiposTexto.push(nomeT + ': ' + formatarPeso(totaisPorTipo[nomeT].kg) + ' kg · ' + totaisPorTipo[nomeT].bobinas + ' bob. (' + perc + '%)');
@@ -2176,8 +2186,9 @@ function renderizarBobinasSaida() {
 
   let corTipo = '#64748b', fundoTipo = '#f1f5f9';
   if (tipo === 'brf') { corTipo = '#1d4ed8'; fundoTipo = '#dbeafe'; }
-  else if (tipo === 'tampas') { corTipo = '#15803d'; fundoTipo = '#dcfce7'; }
-  else if (tipo === 'laminacao') { corTipo = '#c2410c'; fundoTipo = '#ffedd5'; }
+else if (tipo === 'tampas') { corTipo = '#15803d'; fundoTipo = '#dcfce7'; }
+else if (tipo === 'fundo') { corTipo = '#7c3aed'; fundoTipo = '#ede9fe'; }
+else if (tipo === 'laminacao') { corTipo = '#c2410c'; fundoTipo = '#ffedd5'; }
 
   let iconeAtivo = modoSugestao === 'peso' ? '⚖️' : '📅';
   let tooltipAtivo = modoSugestao === 'peso' ? 'Modo: melhor peso' : 'Modo: mais antigas';
@@ -2185,7 +2196,7 @@ function renderizarBobinasSaida() {
   titulo.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:6px;">
       <div style="display:flex;align-items:center;gap:6px;line-height:1.2;overflow:hidden;">
-        <span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.3px;background:${fundoTipo};color:${corTipo};white-space:nowrap;flex-shrink:0;">${nomeBonitoTipo(tipo)}</span>
+        <span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.3px;background:${fundoTipo};color:${corTipo};white-space:nowrap;flex-shrink:0;">${nomeBonitoTipo(tipo)}</span>está 
         <span style="font-size:15px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item}</span>
         <span style="display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;font-size:11px;font-weight:700;background:#e2e8f0;color:#475569;flex-shrink:0;">V${versao}</span>
       </div>
@@ -2527,14 +2538,19 @@ window.abrirConfigCadastro = function() {
 
 function renderizarCadastro() {
   let container = document.getElementById('cadastroAcordeao');
+  if (!container) return;
+
   let tiposAbertos = [], itensAbertos = [];
   container.querySelectorAll('.cad-tipo.aberto').forEach(el => { tiposAbertos.push(el.dataset.tipo); });
   container.querySelectorAll('.cad-item.aberto').forEach(el => { itensAbertos.push(el.dataset.tipo + '|' + el.dataset.item); });
+
   container.innerHTML = '';
 
+  // ✅ VERSÃO CORRIGIDA COM FUNDO
   let tipos = [
     { chave: 'brf', nome: 'BRF' },
     { chave: 'tampas', nome: 'Tampas' },
+    { chave: 'fundo', nome: 'Fundo' },
     { chave: 'laminacao', nome: '1ª Laminação' }
   ];
 
@@ -2551,7 +2567,7 @@ function renderizarCadastro() {
     let header = document.createElement('button');
     header.className = 'cad-tipo-header';
     header.innerHTML = `<span>${tipo.nome} <span style="font-weight:400;font-size:12px;opacity:0.7;">(${itens.length} itens, ${totalVersoes} versões)</span></span><span class="cad-seta">▶</span>`;
-    header.onclick = function() { divTipo.classList.toggle('aberto'); };
+    header.onclick = function () { divTipo.classList.toggle('aberto'); };
 
     let body = document.createElement('div');
     body.className = 'cad-tipo-body';
@@ -2573,7 +2589,7 @@ function renderizarCadastro() {
         <span class="cad-btn-mini" title="Renomear" onclick="event.stopPropagation(); editarNomeItem('${tipo.chave}', '${itemNome}')">✏️</span>
         <span class="cad-btn-mini excluir" title="Excluir item" onclick="event.stopPropagation(); removerItem('${tipo.chave}', '${itemNome}')">🗑️</span>
       `;
-      itemHeader.onclick = function(e) {
+      itemHeader.onclick = function (e) {
         if (e.target.classList.contains('cad-btn-mini')) return;
         divItem.classList.toggle('aberto');
       };
@@ -2601,7 +2617,7 @@ function renderizarCadastro() {
       let btnAddVersao = document.createElement('button');
       btnAddVersao.className = 'cad-btn-add';
       btnAddVersao.textContent = '+ Adicionar versão';
-      btnAddVersao.onclick = function() { adicionarVersao(tipo.chave, itemNome); };
+      btnAddVersao.onclick = function () { adicionarVersao(tipo.chave, itemNome); };
       itemBody.appendChild(btnAddVersao);
 
       divItem.appendChild(itemHeader);
@@ -2612,7 +2628,7 @@ function renderizarCadastro() {
     let btnAddItem = document.createElement('button');
     btnAddItem.className = 'cad-btn-add';
     btnAddItem.textContent = '+ Adicionar item';
-    btnAddItem.onclick = function() { adicionarItem(tipo.chave); };
+    btnAddItem.onclick = function () { adicionarItem(tipo.chave); };
     body.appendChild(btnAddItem);
 
     divTipo.appendChild(header);
@@ -2798,8 +2814,8 @@ function gerarQRBobina(index) {
     correctLevel: QRCode.CorrectLevel.M
   });
 
-  let corTipo = tipo === 'brf' ? '#3b82f6' : tipo === 'tampas' ? '#16a34a' : tipo === 'laminacao' ? '#ea580c' : '#64748b';
-  let bgTipo = tipo === 'brf' ? '#dbeafe' : tipo === 'tampas' ? '#dcfce7' : tipo === 'laminacao' ? '#ffedd5' : '#f1f5f9';
+  let corTipo = tipo === 'brf' ? '#3b82f6' : tipo === 'tampas' ? '#16a34a' : tipo === 'fundo' ? '#8b5cf6' : tipo === 'laminacao' ? '#ea580c' : '#64748b';
+let bgTipo = tipo === 'brf' ? '#dbeafe' : tipo === 'tampas' ? '#dcfce7' : tipo === 'fundo' ? '#ede9fe' : tipo === 'laminacao' ? '#ffedd5' : '#f1f5f9';
 
   let infoDiv = document.createElement("div");
   infoDiv.style.cssText = "text-align:center;margin-top:14px;display:flex;flex-direction:column;gap:6px;";
