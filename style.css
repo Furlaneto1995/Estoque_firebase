@@ -1021,6 +1021,16 @@ body.dark-mode #btnRefazer        { background: #475569; }
   padding-right: 6px;
 }
 
+/* Cor do Fundo no Gerenciar Cadastro */
+.cad-tipo[data-tipo="fundo"] .cad-tipo-header { 
+  color: #8b5cf6; 
+}
+
+/* Versão Dark Mode também */
+body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header { 
+  color: #a78bfa; 
+}
+
 .cad-tipo { border-radius: 10px; overflow: hidden; }
 
 .cad-tipo-header {
