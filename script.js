@@ -1404,18 +1404,18 @@ function atualizarDetalhes() {
   let pesoTotalAcumulado = 0, totalBobinas = 0;
 
   let entradas = historico.filter(h => {
-    if (h.tipo !== "Entrada") return false;
-    if (h._removidaEstoque) return false;
-    let partes = h.item.split(" - V");
-    if (partes.length < 2) return false;
-    let item = partes[0];
-    let tipoEncontrado = "";
-    Object.keys(banco).forEach(t => { if (banco[t][item]) tipoEncontrado = t; });
-    if (tipoEncontrado !== tipoDetalheAtual) return false;
-    if (h.consumida) return true;
-    if (!estoque[h.item] || estoque[h.item] <= 0) return false;
-    return true;
-  });
+  if (h.tipo !== "Entrada") return false;
+  if (h._removidaEstoque) return false;
+  if (h.consumida) return false;           // ← Agora exclui as consumidas
+  let partes = h.item.split(" - V");
+  if (partes.length < 2) return false;
+  let item = partes[0];
+  let tipoEncontrado = "";
+  Object.keys(banco).forEach(t => { if (banco[t][item]) tipoEncontrado = t; });
+  if (tipoEncontrado !== tipoDetalheAtual) return false;
+  if (!estoque[h.item] || estoque[h.item] <= 0) return false;
+  return true;
+});
 
   let agrupado = {};
   let todasEntradas = {};
@@ -1427,17 +1427,17 @@ function atualizarDetalhes() {
   Object.keys(todasEntradas).forEach(chave => {
     let pesoAtual = estoque[chave] || 0;
     let lista = todasEntradas[chave];
-    let consumidas = lista.filter(h => h.consumida);
-    let ativas = lista.filter(h => !h.consumida);
-    if (pesoAtual <= 0 && consumidas.length === 0) return;
-    let registrosSelecionados = [];
-    let soma = 0;
-    for (let i = ativas.length - 1; i >= 0; i--) {
-      if (soma >= pesoAtual) break;
-      registrosSelecionados.unshift(ativas[i]);
-      soma += ativas[i].qtd;
-    }
-    agrupado[chave] = { registros: [...consumidas, ...registrosSelecionados], total: pesoAtual };
+    if (pesoAtual <= 0) return;
+
+let registrosSelecionados = [];
+let soma = 0;
+for (let i = lista.length - 1; i >= 0; i--) {
+  if (soma >= pesoAtual) break;
+  registrosSelecionados.unshift(lista[i]);
+  soma += lista[i].qtd;
+}
+
+agrupado[chave] = { registros: registrosSelecionados, total: pesoAtual };
   });
 
   Object.keys(estoque).filter(chave => !chave.endsWith('_qtd')).forEach(chave => {
@@ -1497,7 +1497,7 @@ function atualizarDetalhes() {
       tamanho = banco[tipoDetalheAtual][item][versao].tamanho;
     }
     pesoTotalAcumulado += agrupado[chave].total;
-    totalBobinas += agrupado[chave].registros.length;
+     totalBobinas += agrupado[chave].registros.filter(r => !r.consumida).length; 
     let idLimpo = "gp" + item.replace(/[^a-zA-Z0-9]/g, '') + versao.replace(/[^a-zA-Z0-9]/g, '');
 
     let tr = document.createElement('tr');
