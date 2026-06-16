@@ -2038,3 +2038,24 @@ body.dark-mode .cad-btn-add {
   background: #1e293b;
   border-color: #64748b;
 }
+
+/* ===== Corrigir cor do texto dos botões de adicionar ===== */
+.cad-btn-add {
+  color: #64748b !important;           /* Cor cinza visível */
+  font-weight: 500;
+}
+
+body.dark-mode .cad-btn-add {
+  color: #94a3b8 !important;           /* Cor mais clara no dark mode */
+}
+
+/* Efeito hover */
+.cad-btn-add:hover {
+  color: #16a34a !important;
+  border-color: #16a34a;
+}
+
+body.dark-mode .cad-btn-add:hover {
+  color: #86efac !important;
+  border-color: #86efac;
+}
