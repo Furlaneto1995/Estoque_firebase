@@ -1107,16 +1107,12 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
 .cad-item-header .cad-item-nome { font-weight: 600; flex: 1; }
 .cad-item-header .cad-item-qtd  { font-size: 11px; color: #94a3b8; }
 
-/* ================= CAD-ITEM-BODY + BOTÃO STICKY ================= */
-
-/* ================= CAD-ITEM-BODY + BOTÃO STICKY (VERSÃO CORRIGIDA) ================= */
-
-/* ================= CAD-ITEM-BODY + BOTÃO STICKY ================= */
+/* ================= CAD-ITEM-BODY + BOTÃO STICKY (VERSÃO FINAL) ================= */
 
 .cad-item-body {
   display: none;
-  padding: 8px 8px 60px;
-  max-height: 50vh;
+  padding: 8px 8px 65px;
+  max-height: 48vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   position: relative;
@@ -1140,63 +1136,35 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
   position: sticky;
   bottom: 0;
   background: white;
-  z-index: 20;
+  z-index: 30;
   margin-top: 12px;
-  box-shadow: 0 -6px 10px rgba(0,0,0,0.1);
+  box-shadow: 0 -8px 12px rgba(0,0,0,0.12);
   border: 1px dashed #94a3b8;
-  padding: 8px 12px;
-  font-weight: 500;
-  color: #64748b !important;
+  padding: 10px 12px;
+  font-weight: 600;
+  color: #475569 !important;
+  font-size: 13px;
 }
 
 body.dark-mode .cad-item-body .cad-btn-add {
   background: #1e293b;
   border-color: #64748b;
-  box-shadow: 0 -6px 10px rgba(0,0,0,0.4);
-  color: #94a3b8 !important;
+  box-shadow: 0 -8px 12px rgba(0,0,0,0.5);
+  color: #cbd5e1 !important;
 }
 
-/* Hover do botão */
+/* Hover */
 .cad-item-body .cad-btn-add:hover {
   color: #16a34a !important;
   border-color: #16a34a;
+  background: #f0fdf4;
 }
 
 body.dark-mode .cad-item-body .cad-btn-add:hover {
   color: #86efac !important;
   border-color: #86efac;
+  background: #1f3a2a;
 }
-
-/* ===== Modo escuro — cadastro ===== */
-
-body.dark-mode .cad-tipo-header       { background: #1e3a5f !important; color: #f1f5f9; }
-body.dark-mode .cad-tipo-header:hover { background: #234b7a !important; }
-
-body.dark-mode .cad-tipo[data-tipo="brf"]       .cad-tipo-header { color: #60a5fa; }
-body.dark-mode .cad-tipo[data-tipo="tampas"]    .cad-tipo-header { color: #4ade80; }
-body.dark-mode .cad-tipo[data-tipo="laminacao"] .cad-tipo-header { color: #fb923c; }
-
-body.dark-mode .cad-tipo-body                  { background: #1e293b; }
-
-body.dark-mode .cad-item                       { border-color: #475569; }
-body.dark-mode .cad-item-header                { background: #283548; color: #e2e8f0; }
-body.dark-mode .cad-item-header:hover          { background: #334155; }
-body.dark-mode .cad-item-header .cad-item-qtd  { color: #94a3b8; }
-
-body.dark-mode .cad-versao                     { background: #334155; border-color: #475569; }
-body.dark-mode .cad-versao-nome                { color: #f1f5f9; }
-body.dark-mode .cad-versao-tamanho             { color: #94a3b8; }
-
-body.dark-mode .cad-btn-mini                   { color: #94a3b8; }
-body.dark-mode .cad-btn-mini:hover             { background: #475569; }
-body.dark-mode .cad-btn-mini.excluir           { color: #fca5a5; }
-body.dark-mode .cad-btn-mini.excluir:hover     { background: #3f1d1d; }
-
-body.dark-mode .cad-btn-add                    { border-color: #64748b; color: #94a3b8; }
-body.dark-mode .cad-btn-add:hover              { background: #1f3a2a; border-color: #86efac; color: #86efac; }
-
-body.dark-mode .cad-tipo-header .cad-seta,
-body.dark-mode .cad-item-header .cad-seta      { color: #94a3b8; }
 
 /* ================= HEADER CONFIG ================= */
 
