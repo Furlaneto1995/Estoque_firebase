@@ -2071,3 +2071,23 @@ body.dark-mode #btnConfig:hover { color: #60a5fa; }
 .firebase-sucesso {
   color: #16a34a !important;
 }
+/* Botão de adicionar item fixo no final da categoria */
+.cad-tipo-body {
+  position: relative;
+  padding-bottom: 50px; /* espaço para o botão não ficar por cima */
+}
+
+.cad-btn-add {
+  position: sticky;
+  bottom: 0;
+  background: white;
+  border: 1px dashed #94a3b8;
+  margin-top: 8px;
+  z-index: 2;
+  box-shadow: 0 -4px 8px rgba(0,0,0,0.05);
+}
+
+body.dark-mode .cad-btn-add {
+  background: #1e293b;
+  border-color: #64748b;
+}
