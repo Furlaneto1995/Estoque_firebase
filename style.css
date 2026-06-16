@@ -1111,9 +1111,11 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
 
 /* ================= CAD-ITEM-BODY + BOTÃO STICKY (VERSÃO CORRIGIDA) ================= */
 
+/* ================= CAD-ITEM-BODY + BOTÃO STICKY ================= */
+
 .cad-item-body {
   display: none;
-  padding: 8px 8px 60px;           /* padding-bottom maior para o botão */
+  padding: 8px 8px 60px;
   max-height: 50vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -1133,7 +1135,7 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
   border-radius: 3px;
 }
 
-/* ===== Botão "+ Adicionar versão" fixo ===== */
+/* Botão "+ Adicionar versão" fixo */
 .cad-item-body .cad-btn-add {
   position: sticky;
   bottom: 0;
@@ -1144,12 +1146,25 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
   border: 1px dashed #94a3b8;
   padding: 8px 12px;
   font-weight: 500;
+  color: #64748b !important;
 }
 
 body.dark-mode .cad-item-body .cad-btn-add {
   background: #1e293b;
   border-color: #64748b;
   box-shadow: 0 -6px 10px rgba(0,0,0,0.4);
+  color: #94a3b8 !important;
+}
+
+/* Hover do botão */
+.cad-item-body .cad-btn-add:hover {
+  color: #16a34a !important;
+  border-color: #16a34a;
+}
+
+body.dark-mode .cad-item-body .cad-btn-add:hover {
+  color: #86efac !important;
+  border-color: #86efac;
 }
 
 /* ===== Modo escuro — cadastro ===== */
