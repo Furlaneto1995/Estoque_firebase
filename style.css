@@ -2102,3 +2102,64 @@ body.dark-mode .cad-btn-add:hover {
   color: #86efac !important;
   border-color: #86efac;
 }
+
+/* ================= FORMATAÇÃO DAS VERSÕES (CORRIGIDO) ================= */
+
+.cad-versao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+body.dark-mode .cad-versao {
+  background: #334155;
+  border-color: #475569;
+}
+
+.cad-versao-info {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex: 1;
+}
+
+.cad-versao-nome {
+  font-weight: 600;
+  color: #1e293b;
+  min-width: 50px;
+}
+
+body.dark-mode .cad-versao-nome {
+  color: #f1f5f9;
+}
+
+.cad-versao-tamanho {
+  font-size: 12px;
+  color: #64748b;
+}
+
+body.dark-mode .cad-versao-tamanho {
+  color: #94a3b8;
+}
+
+.cad-versao-acoes {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cad-versao-acoes .cad-btn-mini {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
