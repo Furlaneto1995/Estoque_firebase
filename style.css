@@ -1071,7 +1071,7 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
   display: none;
   padding: 6px 8px 12px;           /* Aumentei o padding inferior */
   background: #fafbfc;
-  max-height: 70vh;                /* ← Aumentei bastante */
+  max-height: 75vh;                /* ← Aumentei bastante */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
