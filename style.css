@@ -1107,6 +1107,8 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
 .cad-item-header .cad-item-nome { font-weight: 600; flex: 1; }
 .cad-item-header .cad-item-qtd  { font-size: 11px; color: #94a3b8; }
 
+/* ================= CAD-ITEM-BODY + BOTÃO STICKY ================= */
+
 .cad-item-body {
   display: none;
   padding: 4px 8px 8px;
@@ -1114,104 +1116,27 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
+  position: relative;
+  padding-bottom: 52px; /* espaço para o botão sticky */
 }
 
 .cad-item.aberto > .cad-item-body {
   display: block;
 }
 
-/* Scrollbar mais visível */
+/* Scrollbar */
 .cad-item-body::-webkit-scrollbar {
   width: 6px;
 }
 .cad-item-body::-webkit-scrollbar-thumb {
   background: #94a3b8;
-  border-radius: 3px;
-}
-
-/* Scrollbar mais visível */
-.cad-item-body::-webkit-scrollbar {
-  width: 6px;
-}
-.cad-item-body::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 3px;
-}
-
-/* Estilo da scrollbar (opcional, mas melhora visual) */
-.cad-item-body::-webkit-scrollbar {
-  width: 6px;
-}
-.cad-item-body::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
   border-radius: 3px;
 }
 .cad-item-body::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #64748b;
 }
 
-.cad-item.aberto > .cad-item-body { display: block; }
-
-.cad-versao {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  margin-bottom: 3px;
-  font-size: 13px;
-}
-
-.cad-versao-info    { display: flex; gap: 8px; align-items: center; }
-.cad-versao-nome    { font-weight: 600; color: #1e293b; }
-.cad-versao-tamanho { font-size: 11px; color: #64748b; }
-
-.cad-versao-acoes   { display: flex; gap: 4px; }
-
-.cad-btn-mini {
-  background: transparent;
-  border: none;
-  font-size: 14px;
-  cursor: pointer;
-  padding: 2px 4px;
-  width: auto;
-  color: #64748b;
-  border-radius: 4px;
-  transition: background 0.15s;
-}
-
-.cad-btn-mini:hover         { background: #e2e8f0; }
-.cad-btn-mini.excluir       { color: #dc2626; }
-.cad-btn-mini.excluir:hover { background: #fee2e2; }
-
-.cad-btn-add {
-  border: 1px dashed #94a3b8;
-  color: #64748b;
-  margin-top: 4px;
-  border-radius: 6px;
-  font-size: 12px;
-  padding: 6px 10px;
-  cursor: pointer;
-  width: 100%;
-  text-align: center;
-  transition: background 0.15s, border-color 0.15s;
-  background: transparent;
-}
-
-.cad-btn-add:hover {
-  background: #f0fdf4;
-  border-color: #16a34a;
-  color: #16a34a;
-}
-
-/* ===== Botão "Adicionar versão" fixo no final ===== */
-.cad-item-body {
-  position: relative;
-  padding-bottom: 52px;
-}
-
+/* ===== Botão "+ Adicionar versão" fixo ===== */
 .cad-item-body .cad-btn-add {
   position: sticky;
   bottom: 0;
@@ -1222,7 +1147,6 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
   border: 1px dashed #94a3b8;
 }
 
-/* Dark Mode */
 body.dark-mode .cad-item-body .cad-btn-add {
   background: #1e293b;
   border-color: #64748b;
