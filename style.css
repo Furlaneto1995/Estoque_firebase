@@ -1206,6 +1206,29 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
   color: #16a34a;
 }
 
+/* ===== Botão "Adicionar versão" fixo no final ===== */
+.cad-item-body {
+  position: relative;
+  padding-bottom: 52px;
+}
+
+.cad-item-body .cad-btn-add {
+  position: sticky;
+  bottom: 0;
+  background: white;
+  z-index: 10;
+  margin-top: 8px;
+  box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.08);
+  border: 1px dashed #94a3b8;
+}
+
+/* Dark Mode */
+body.dark-mode .cad-item-body .cad-btn-add {
+  background: #1e293b;
+  border-color: #64748b;
+  box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.3);
+}
+
 /* ===== Modo escuro — cadastro ===== */
 
 body.dark-mode .cad-tipo-header       { background: #1e3a5f !important; color: #f1f5f9; }
