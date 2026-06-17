@@ -730,7 +730,6 @@ body.dark-mode .gerador-card-tipo.tipo-fundo { background: #2e1065; color: #c4b5
 }
 
 .detalhes-header h2 { margin: 0; font-size: 18px; color: #1e293b; flex: 1; }
-
 .detalhes-header .detalhes-info { text-align: right; }
 
 .detalhes-header .detalhes-info span {
@@ -765,7 +764,6 @@ body.dark-mode .gerador-card-tipo.tipo-fundo { background: #2e1065; color: #c4b5
 }
 
 .detalhe-registro td { background: #f8fafc; font-size: 11px; color: #475569; }
-
 .detalhe-legenda td:first-child,
 .detalhe-registro td:first-child { border-left: 3px solid #93c5fd; }
 
@@ -977,7 +975,6 @@ body.dark-mode .modal-saida-tabela thead th { background: #334155; color: #e2e8f
 body.dark-mode .modal-saida-header h3       { color: #f1f5f9; }
 body.dark-mode .saida-restante              { background: #3b1c1c; color: #fca5a5; }
 body.dark-mode .bobina-marcada td           { background: #1e3a5f !important; color: #93c5fd; }
-
 body.dark-mode .toast                       { background: #475569; }
 body.dark-mode .toast.toast-sucesso         { background: #166334; }
 body.dark-mode .toast.toast-erro            { background: #991b1b; }
@@ -999,7 +996,6 @@ body.dark-mode .modal-content label,
 body.dark-mode .modal-content strong,
 body.dark-mode .modal-content p,
 body.dark-mode .modal-content h3        { color: #e2e8f0 !important; }
-
 body.dark-mode .modal-opcoes-content h3 { color: #f1f5f9 !important; }
 
 body.dark-mode #saldoAtual        { color: #94a3b8; }
@@ -1011,24 +1007,19 @@ body.dark-mode #btnRefazer        { background: #475569; }
 /* ================= GERENCIAR CADASTRO ================= */
 
 .cadastro-acordeao {
-  max-height: 80vh;
+  flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+  max-height: none;
+  padding-right: 6px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 10px;
-  padding-right: 6px;
 }
 
 /* Cor do Fundo no Gerenciar Cadastro */
-.cad-tipo[data-tipo="fundo"] .cad-tipo-header { 
-  color: #8b5cf6; 
-}
-
-/* Versão Dark Mode também */
-body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header { 
-  color: #a78bfa; 
-}
+.cad-tipo[data-tipo="fundo"] .cad-tipo-header { color: #8b5cf6; }
+body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header { color: #a78bfa; }
 
 .cad-tipo { border-radius: 10px; overflow: hidden; }
 
@@ -1070,13 +1061,11 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
   display: none;
   padding: 6px 8px 12px;
   background: #fafbfc;
-  max-height: none;           /* ← Removido o limite */
-  overflow: visible;          /* ← Sem rolagem aqui */
+  max-height: none;
+  overflow: visible;
 }
 
-.cad-tipo.aberto > .cad-tipo-body {
-  display: block;
-}
+.cad-tipo.aberto > .cad-tipo-body { display: block; }
 
 .cad-item {
   border: 1px solid #e2e8f0;
@@ -1105,87 +1094,101 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
 .cad-item-header .cad-item-nome { font-weight: 600; flex: 1; }
 .cad-item-header .cad-item-qtd  { font-size: 11px; color: #94a3b8; }
 
-/* Botão "+ Adicionar item" (final da categoria) /
+/* Botão "+ Adicionar item" (final da categoria) */
 .cad-tipo-body > .cad-btn-add {
-position: sticky;
-bottom: 0;
-background: white;
-z-index: 100; / z-index maior que o de versão */
-margin-top: 12px;
-box-shadow: 0 -10px 15px rgba(0,0,0,0.15);
-border: 1px dashed #94a3b8;
+  position: relative;
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  background: white;
+  border: 1px dashed #94a3b8;
+  box-shadow: none;
+  z-index: 1;
 }
 
-body.dark-mode .cad-tipo-body > .cad-btn-add {
-background: #1e293b;
-border-color: #64748b;
-box-shadow: 0 -10px 15px rgba(0,0,0,0.6);
-}
+/* CAD-ITEM-BODY */
 
-/* ================= CAD-ITEM-BODY SIMPLIFICADO ================= */
 .cad-item-body {
   display: none;
-  padding: 8px 8px 110px;      /* Mais espaço para não sobrepor */
-  max-height: 50vh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  position: relative;
+  padding: 0;
 }
 
 .cad-item.aberto > .cad-item-body {
   display: block;
+  max-height: 45vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 6px 70px 6px;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+  background: #fafbfc;
 }
 
 /* Scrollbar */
-.cad-item-body::-webkit-scrollbar {
-  width: 6px;
-}
-.cad-item-body::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 3px;
-}
+.cad-item-body::-webkit-scrollbar { width: 6px; }
+.cad-item-body::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
 
-/* Botão "+ Adicionar versão" */
-/* Botão "+ Adicionar versão" */
+/* Botão "+ Adicionar versão" — no final, sem sticky */
 .cad-item-body .cad-btn-add {
-  position: sticky;
-  bottom: 0;
+  position: relative;
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
   background: white;
-  z-index: 200;                    /* ← Aumentei bastante */
-  margin-top: 12px;
-  box-shadow: 0 -10px 15px rgba(0,0,0,0.15);
   border: 1px dashed #94a3b8;
-  padding: 12px;
+  border-radius: 8px;
+  color: #64748b !important;
   font-weight: 600;
-  color: #475569 !important;
-  font-size: 14px;
+  font-size: 13px;
+  text-align: center;
+  box-shadow: none;
+  z-index: 1;
+  box-sizing: border-box;
 }
 
-body.dark-mode .cad-item-body .cad-btn-add {
+/* Cores e formatação dos botões de adicionar */
+.cad-btn-add {
+  color: #64748b !important;
+  font-weight: 500;
+}
+
+.cad-btn-add:hover {
+  color: #16a34a !important;
+  border-color: #16a34a;
+}
+
+body.dark-mode .cad-btn-add {
   background: #1e293b;
   border-color: #64748b;
-  box-shadow: 0 -10px 15px rgba(0,0,0,0.6);
-  color: #cbd5e1 !important;
+  color: #94a3b8 !important;
 }
 
-/* ================= FORMATAÇÃO DAS VERSÕES ================= */
+body.dark-mode .cad-btn-add:hover {
+  color: #86efac !important;
+  border-color: #86efac;
+}
 
+body.dark-mode .cad-item-body .cad-btn-add,
+body.dark-mode .cad-tipo-body > .cad-btn-add {
+  background: #1e293b;
+}
+
+/* Formatação compacta das versões */
 .cad-versao {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 5px 8px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
-  margin-bottom: 6px;
-  font-size: 13px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  min-height: 32px;
 }
 
-body.dark-mode .cad-versao {
-  background: #334155;
-  border-color: #475569;
-}
+.cad-versao:last-child { margin-bottom: 0; }
 
 .cad-versao-info {
   display: flex;
@@ -1200,17 +1203,9 @@ body.dark-mode .cad-versao {
   min-width: 45px;
 }
 
-body.dark-mode .cad-versao-nome {
-  color: #f1f5f9;
-}
-
 .cad-versao-tamanho {
-  font-size: 12px;
+  font-size: 11px;
   color: #64748b;
-}
-
-body.dark-mode .cad-versao-tamanho {
-  color: #94a3b8;
 }
 
 .cad-versao-acoes {
@@ -1219,15 +1214,35 @@ body.dark-mode .cad-versao-tamanho {
   flex-shrink: 0;
 }
 
-.cad-versao-acoes .cad-btn-mini {
-  width: 28px;
-  height: 28px;
+.cad-versao-acoes .cad-btn-mini,
+.cad-versao-acoes button {
+  width: 26px;
+  height: 26px;
   padding: 0;
-  font-size: 14px;
+  font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
+
+body.dark-mode .cad-tipo-body,
+body.dark-mode .cad-item.aberto > .cad-item-body {
+  background: #1e293b;
+}
+
+body.dark-mode .cad-versao {
+  background: #334155;
+  border-color: #475569;
+}
+
+body.dark-mode .cad-versao-nome { color: #f1f5f9; }
+body.dark-mode .cad-versao-tamanho { color: #94a3b8; }
+
+/* Z-index para item aberto ficar acima */
+.cad-tipo { position: relative; z-index: 1; }
+.cad-tipo.aberto { z-index: 10; }
+.cad-item { position: relative; z-index: 1; }
+.cad-item.aberto { z-index: 20; }
 
 /* ================= HEADER CONFIG ================= */
 
@@ -1253,7 +1268,6 @@ body.dark-mode .cad-versao-tamanho {
 }
 
 .config-fechar:hover         { background: #fee2e2; color: #dc2626; }
-
 body.dark-mode .config-fechar       { color: #94a3b8; }
 body.dark-mode .config-fechar:hover { background: #3f1d1d; color: #fca5a5; }
 
@@ -1380,7 +1394,7 @@ body.dark-mode .btn-menu-historico { background: #475569; }
 }
 
 .switch input:checked + .switch-slider         { background: #1e3a8a; }
-switch input:checked + .switch-slider::before { transform: translateX(18px); }
+.switch input:checked + .switch-slider::before { transform: translateX(18px); }
 
 body.dark-mode .dark-switch-row       { background: #1e3a5f !important; color: #93c5fd !important; }
 body.dark-mode .dark-switch-row:hover { background: #234b7a !important; }
@@ -1633,10 +1647,6 @@ body.dark-mode .btn-restaurar-local {
 #modalConfig:not(.hidden)   { display: flex !important; }
 
 #modalConfig .modal-content {
-  max-height: 90vh;
-  overflow-y: auto;           /* ← Adicione isso */
-}
-#modalConfig .modal-content {
   width: 280px;
   max-width: 92vw;
   height: auto;
@@ -1645,6 +1655,11 @@ body.dark-mode .btn-restaurar-local {
   margin: 0;
   overflow-y: auto;
   box-sizing: border-box;
+  padding: 20px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  background: white;
 }
 
 #configMenuPrincipal,
@@ -2063,258 +2078,8 @@ body.dark-mode #btnConfig:hover { color: #60a5fa; }
 .firebase-sucesso {
   color: #16a34a !important;
 }
-/* Botão de adicionar item fixo no final da categoria */
-.cad-tipo-body {
-  position: relative;
-  padding-bottom: 50px; /* espaço para o botão não ficar por cima */
-}
 
-.cad-btn-add {
-  position: sticky;
-  bottom: 0;
-  background: white;
-  border: 1px dashed #94a3b8;
-  margin-top: 8px;
-  z-index: 2;
-  box-shadow: 0 -4px 8px rgba(0,0,0,0.05);
-}
-
-body.dark-mode .cad-btn-add {
-  background: #1e293b;
-  border-color: #64748b;
-}
-
-/* ===== Corrigir cor do texto dos botões de adicionar ===== */
-.cad-btn-add {
-  color: #64748b !important;           /* Cor cinza visível */
-  font-weight: 500;
-}
-
-body.dark-mode .cad-btn-add {
-  color: #94a3b8 !important;           /* Cor mais clara no dark mode */
-}
-
-/* Efeito hover */
-.cad-btn-add:hover {
-  color: #16a34a !important;
-  border-color: #16a34a;
-}
-
-body.dark-mode .cad-btn-add:hover {
-  color: #86efac !important;
-  border-color: #86efac;
-}
-
-/* ================= FORMATAÇÃO COMPLETA DAS VERSÕES ================= */
-
-.cad-versao {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  margin-bottom: 6px;
-  font-size: 13px;
-}
-
-body.dark-mode .cad-versao {
-  background: #334155;
-  border-color: #475569;
-}
-
-.cad-versao-info {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex: 1;
-}
-
-.cad-versao-nome {
-  font-weight: 600;
-  color: #1e293b;
-  min-width: 50px;
-}
-
-body.dark-mode .cad-versao-nome {
-  color: #f1f5f9;
-}
-
-.cad-versao-tamanho {
-  font-size: 12px;
-  color: #64748b;
-}
-
-body.dark-mode .cad-versao-tamanho {
-  color: #94a3b8;
-}
-
-.cad-versao-acoes {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.cad-versao-acoes .cad-btn-mini {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* ================= CORREÇÃO: TELA GERENCIAR CADASTRO ================= */
-
-/* 1. Modal sem scroll próprio */
-#modalConfig .modal-content {
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  max-height: 90vh;
-}
-
-#configTelaCadastro {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  overflow: hidden;
-  max-height: 100%;
-}
-
-#configTelaCadastro .config-header {
-  flex-shrink: 0;
-}
-
-/* 2. Rolagem geral do acordeão */
-.cadastro-acordeao {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  max-height: none;
-  padding-right: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-/* 3. Corpo da categoria expande sem scroll próprio */
-.cad-tipo-body {
-  max-height: none;
-  overflow: visible;
-  padding: 6px 8px 12px;
-  background: #fafbfc;
-}
-
-/* 4. Categoria e item aberto ficam acima dos demais */
-.cad-tipo {
-  position: relative;
-  z-index: 1;
-}
-
-.cad-tipo.aberto {
-  z-index: 10;
-}
-
-.cad-item {
-  position: relative;
-  z-index: 1;
-}
-
-.cad-item.aberto {
-  z-index: 20;
-}
-
-/* 5. Corpo do item fechado por padrão */
-.cad-item-body {
-  display: none;
-  padding: 0;
-}
-
-/* 6. Corpo do item aberto: scroll próprio */
-.cad-item.aberto > .cad-item-body {
-  display: block;
-  max-height: 45vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 6px 6px 70px 6px;
-  -webkit-overflow-scrolling: touch;
-  box-sizing: border-box;
-  background: #fafbfc; /* fundo sólido para não deixar versões transparentes */
-}
-
-/* 7. Botão "+ Adicionar versão" grudado no final */
-.cad-item-body .cad-btn-add {
-  position: sticky;
-  bottom: 6px;
-  display: block;
-  width: 100%;
-  margin-top: 8px;
-  padding: 10px;
-  background: white;
-  border: 1px dashed #94a3b8;
-  border-radius: 8px;
-  color: #64748b !important;
-  font-weight: 600;
-  font-size: 13px;
-  text-align: center;
-  box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
-  z-index: 10;
-  box-sizing: border-box;
-}
-
-/* 8. Botão "+ Adicionar item" no final da categoria */
-.cad-tipo-body > .cad-btn-add {
-  position: relative;
-  display: block;
-  width: 100%;
-  margin-top: 10px;
-  background: white;
-  border: 1px dashed #94a3b8;
-  box-shadow: none;
-  z-index: 1;
-}
-
-/* 9. Formatação compacta das versões */
-.cad-versao {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 5px 8px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  margin-bottom: 4px;
-  font-size: 12px;
-  min-height: 32px;
-}
-
-.cad-versao:last-child {
-  margin-bottom: 0;
-}
-
-.cad-versao-nome {
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.cad-versao-tamanho {
-  font-size: 11px;
-  color: #64748b;
-}
-
-/* Botões de ação menores */
-.cad-versao-acoes .cad-btn-mini,
-.cad-versao-acoes button {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  font-size: 12px;
-}
-
-/* 10. Ajustes para mobile */
+/* Ajustes mobile para Gerenciar Cadastro */
 @media (max-width: 768px) {
   .cad-item.aberto > .cad-item-body {
     max-height: 50vh;
@@ -2336,36 +2101,4 @@ body.dark-mode .cad-versao-tamanho {
     padding: 9px;
     font-size: 12px;
   }
-}
-
-/* 11. Dark mode */
-body.dark-mode .cad-tipo-body,
-body.dark-mode .cad-item.aberto > .cad-item-body {
-  background: #1e293b;
-}
-
-body.dark-mode .cad-item-body .cad-btn-add,
-body.dark-mode .cad-tipo-body > .cad-btn-add {
-  background: #1e293b;
-  border-color: #64748b;
-  color: #94a3b8 !important;
-}
-
-body.dark-mode .cad-versao {
-  background: #334155;
-  border-color: #475569;
-}
-
-body.dark-mode .cad-versao-nome {
-  color: #f1f5f9;
-}
-
-body.dark-mode .cad-versao-tamanho {
-  color: #94a3b8;
-}
-
-body.dark-mode .cad-item-body .cad-btn-add:hover,
-body.dark-mode .cad-tipo-body > .cad-btn-add:hover {
-  color: #86efac !important;
-  border-color: #86efac;
 }
