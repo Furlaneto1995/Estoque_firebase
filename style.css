@@ -1111,8 +1111,8 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
 
 .cad-item-body {
   display: none;
-  padding: 8px 8px 70px;           /* padding maior */
-  max-height: 55vh;                /* aumentei a altura */
+  padding: 8px 8px 90px;        /* ← Aumentei bastante o padding inferior */
+  max-height: 60vh;             /* ← Aumentei um pouco a altura máxima */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   position: relative;
@@ -1131,19 +1131,19 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
   border-radius: 3px;
 }
 
-/* Botão "+ Adicionar versão" fixo */
+/* Botão "+ Adicionar versão" */
 .cad-item-body .cad-btn-add {
   position: sticky;
   bottom: 0;
   background: white;
-  z-index: 50;                     /* z-index mais alto */
+  z-index: 50;
   margin-top: 12px;
   box-shadow: 0 -10px 15px rgba(0,0,0,0.15);
   border: 1px dashed #94a3b8;
-  padding: 10px 12px;
+  padding: 12px;
   font-weight: 600;
   color: #475569 !important;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 body.dark-mode .cad-item-body .cad-btn-add {
