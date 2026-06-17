@@ -1107,12 +1107,12 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
 .cad-item-header .cad-item-nome { font-weight: 600; flex: 1; }
 .cad-item-header .cad-item-qtd  { font-size: 11px; color: #94a3b8; }
 
-/* ================= CAD-ITEM-BODY + BOTÃO STICKY (VERSÃO FINAL) ================= */
+/* ================= CAD-ITEM-BODY + BOTÃO STICKY (VERSÃO PC) ================= */
 
 .cad-item-body {
   display: none;
-  padding: 8px 8px 65px;
-  max-height: 48vh;
+  padding: 8px 8px 70px;           /* padding maior */
+  max-height: 55vh;                /* aumentei a altura */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   position: relative;
@@ -1136,9 +1136,9 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
   position: sticky;
   bottom: 0;
   background: white;
-  z-index: 30;
+  z-index: 50;                     /* z-index mais alto */
   margin-top: 12px;
-  box-shadow: 0 -8px 12px rgba(0,0,0,0.12);
+  box-shadow: 0 -10px 15px rgba(0,0,0,0.15);
   border: 1px dashed #94a3b8;
   padding: 10px 12px;
   font-weight: 600;
@@ -1149,21 +1149,8 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header {
 body.dark-mode .cad-item-body .cad-btn-add {
   background: #1e293b;
   border-color: #64748b;
-  box-shadow: 0 -8px 12px rgba(0,0,0,0.5);
+  box-shadow: 0 -10px 15px rgba(0,0,0,0.6);
   color: #cbd5e1 !important;
-}
-
-/* Hover */
-.cad-item-body .cad-btn-add:hover {
-  color: #16a34a !important;
-  border-color: #16a34a;
-  background: #f0fdf4;
-}
-
-body.dark-mode .cad-item-body .cad-btn-add:hover {
-  color: #86efac !important;
-  border-color: #86efac;
-  background: #1f3a2a;
 }
 
 /* ================= FORMATAÇÃO DAS VERSÕES ================= */
