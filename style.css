@@ -1007,10 +1007,7 @@ body.dark-mode #btnRefazer        { background: #475569; }
 /* ================= GERENCIAR CADASTRO ================= */
 
 .cadastro-acordeao {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  max-height: none;
+  overflow: visible;
   padding-right: 6px;
   display: flex;
   flex-direction: column;
@@ -1118,7 +1115,7 @@ body.dark-mode .cad-tipo[data-tipo="fundo"] .cad-tipo-header { color: #a78bfa; }
   max-height: 45vh;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 6px 6px 70px 6px;
+  padding: 6px 6px 20px 6px;
   -webkit-overflow-scrolling: touch;
   box-sizing: border-box;
   background: #fafbfc;
@@ -1226,8 +1223,13 @@ body.dark-mode .cad-tipo-body > .cad-btn-add {
 }
 
 body.dark-mode .cad-tipo-body,
-body.dark-mode .cad-item.aberto > .cad-item-body {
+body.dark-mode .cad-item.aberto > .cad-item-body,
+body.dark-mode #configTelaCadastro .config-header {
   background: #1e293b;
+}
+
+body.dark-mode #configTelaCadastro .config-header {
+  border-bottom-color: #475569;
 }
 
 body.dark-mode .cad-versao {
@@ -1254,6 +1256,19 @@ body.dark-mode .cad-versao-tamanho { color: #94a3b8; }
 }
 
 .config-header h3 { margin: 0; font-size: 15px; }
+
+#configTelaCadastro .config-header {
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 100;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 4px;
+  margin-top: -20px;
+  padding-top: 20px;
+}
 
 .config-fechar {
   background: transparent;
@@ -1684,6 +1699,7 @@ body.dark-mode .btn-restaurar-local {
   display: flex !important;
   flex-direction: column !important;
   gap: 8px;
+  overflow: visible;
 }
 
 #configMenuPrincipal .btn-opcao,
@@ -2083,7 +2099,7 @@ body.dark-mode #btnConfig:hover { color: #60a5fa; }
 @media (max-width: 768px) {
   .cad-item.aberto > .cad-item-body {
     max-height: 50vh;
-    padding-bottom: 65px;
+    padding-bottom: 20px;
   }
   .cad-versao {
     padding: 4px 6px;
