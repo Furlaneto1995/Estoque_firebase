@@ -59,51 +59,78 @@ document.addEventListener("DOMContentLoaded", function() {
 window.addEventListener('keydown', function(e) {
   if (!modoColetorAtivo) return;
 
-  // Se o foco estiver em um campo de entrada de texto e não for o Enter, 
-  // deixamos o comportamento padrão (a menos que você queira que o coletor funcione sempre)
-  // Mas coletores costumam enviar o código "limpo".
-  
-  if (e.key === 'Enter') {
+  // Ignora teclas de controle puro (Shift, Alt, etc)
+  if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt') return;
+
+  // Detecta o final da leitura (Enter)
+  if (e.key === 'Enter' || e.key === 'NumpadEnter') {
+    e.preventDefault(); // Impede que o Enter envie formulários ou pule linha
+    
     if (coletorBuffer.length > 2) {
-      processarEntradaColetor(coletorBuffer);
+      // Pequeno delay para garantir que o coletor terminou de enviar tudo
+      const codigoFinal = coletorBuffer.trim();
+      processarEntradaColetor(codigoFinal);
+      
+      // Limpa qualquer campo de texto que possa ter recebido caracteres
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+        // Se o foco estava num input de busca, limpamos o que "vazou" para lá
+        if (document.activeElement.id === 'buscaItem' || document.activeElement.id === 'buscaEstoque' || document.activeElement.id === 'buscaHistorico' || document.activeElement.id === 'confBusca') {
+           setTimeout(() => { document.activeElement.value = ""; }, 10);
+        }
+      }
     }
     coletorBuffer = "";
-    e.preventDefault();
-  } else {
-    // Apenas captura caracteres imprimíveis
-    if (e.key.length === 1) {
-      coletorBuffer += e.key;
-      
-      // Limpa o buffer se demorar muito entre as teclas (evita capturar digitação manual lenta)
-      clearTimeout(coletorTimeout);
-      coletorTimeout = setTimeout(() => {
-        coletorBuffer = "";
-      }, 200); // 200ms é muito tempo para um coletor, mas seguro para redes oscilantes
-    }
+    return;
   }
-});
+
+  // Captura apenas caracteres individuais (caracteres imprimíveis)
+  if (e.key.length === 1) {
+    coletorBuffer += e.key;
+
+    // Se o modo coletor está ativo, queremos que a leitura seja "invisível"
+    // Mas se o usuário estiver digitando no teclado do PC, isso pode atrapalhar.
+    // Coletores são muito rápidos, então se o tempo entre as teclas for curto, bloqueamos a inserção no input.
+    
+    clearTimeout(coletorTimeout);
+    coletorTimeout = setTimeout(() => {
+      // Se demorar mais de 200ms, provavelmente é digitação humana, então limpamos o buffer
+      coletorBuffer = "";
+    }, 250); 
+  }
+}, true); // O 'true' aqui é importante para capturar o evento antes de outros elementos
 
 function processarEntradaColetor(codigo) {
   console.log("Código recebido do coletor:", codigo);
   
-  // 1. Identifica o contexto (Conferência ou Movimentação)
-  const modalConfAberto = !document.getElementById('modalConferencia').classList.contains('hidden');
+  // 1. Identifica se a conferência está visível (Tela de Andamento)
+  const telaConfAndamento = !document.getElementById('confTelaAndamento').classList.contains('hidden');
   const telaMovimentarAtiva = !document.getElementById('movimentar').classList.contains('hidden');
 
-  if (modalConfAberto) {
-    // Estamos na tela de conferência
+  if (telaConfAndamento) {
+    // Estamos na tela de conferência em andamento
     let resultado = confProcessarLeitura(codigo);
-    // Feedback visual/sonoro para conferência
-    if (resultado === 'conferida') mostrarToast("Conferida: " + codigo, "sucesso");
-    else if (resultado === 'extra') mostrarToast("Extra: " + codigo, "erro");
+    
+    // Feedback de conferência
+    if (resultado === 'conferida') {
+        mostrarToast("Conferida: " + codigo, "sucesso");
+        if (navigator.vibrate) navigator.vibrate([100]);
+    } else if (resultado === 'duplicada') {
+        mostrarToast("Já conferida", "erro");
+    } else if (resultado === 'extra') {
+        mostrarToast("Extra: Adicionada à lista", "sucesso");
+    }
   } else {
-    // Contexto padrão: Busca/Entrada rápida
+    // Contexto Movimentação ou Global
     let dados = null;
-    try { dados = JSON.parse(codigo); }
-    catch (e) { dados = interpretarQRSimplificado(codigo); }
+    try { 
+        // Tenta limpar o código de possíveis espaços invisíveis (\r ou \n)
+        const codigoLimpo = codigo.trim();
+        dados = JSON.parse(codigoLimpo); 
+    }
+    catch (e) { dados = interpretarQRSimplificado(codigo.trim()); }
 
     if (!dados) {
-      mostrarToast("Código inválido", "erro");
+      mostrarToast("Código inválido: " + codigo, "erro");
       return;
     }
 
@@ -112,7 +139,13 @@ function processarEntradaColetor(codigo) {
     if (telaMovimentarAtiva) {
         // Se estiver na tela de movimentação, preenchemos os campos ou fazemos entrada rápida
         qrLidoAtual = { dados, registro };
-        entradaRapidaQR(); 
+        
+        // Se a bobina já existir e não for entrada, mostramos o resultado para o usuário decidir
+        if (registro && !registro._removidaEstoque && !registro.consumida) {
+            mostrarResultadoQR(dados, registro);
+        } else {
+            entradaRapidaQR(); 
+        }
     } else {
         // Se estiver em outra tela, mostramos o resultado
         mostrarResultadoQR(dados, registro);
