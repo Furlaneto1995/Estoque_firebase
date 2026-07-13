@@ -1,3 +1,4 @@
+
 /* ================= MODO COLETOR DE DADOS (HID) ================= */
 
 let modoColetorAtivo = localStorage.getItem('modoColetorAtivo') === 'true';
@@ -7,7 +8,6 @@ let coletorTimeout = null;
 function alternarModoColetor() {
   const toggle = document.getElementById('coletorToggle');
   if (toggle) {
-    // Se a função foi chamada pelo clique na div/label
     if (window.event && window.event.currentTarget && window.event.currentTarget.classList.contains('dark-switch-row')) {
        toggle.checked = !toggle.checked;
     }
@@ -55,35 +55,27 @@ function atualizarInterfaceColetor() {
 
 function recuperarFocoColetor() {
   if (!modoColetorAtivo) return;
-  
-  // Só recupera o foco se o usuário não estiver intencionalmente em um campo de texto manual
   const elAtivo = document.activeElement;
   const isManualInput = elAtivo && (elAtivo.tagName === 'INPUT' || elAtivo.tagName === 'TEXTAREA' || elAtivo.tagName === 'SELECT') && elAtivo.id !== 'coletorTrap';
-  
   if (!isManualInput) {
     const trap = document.getElementById('coletorTrap');
     if (trap) {
-        trap.value = ""; // Limpa antes de focar
+        trap.value = "";
         trap.focus();
     }
   }
 }
 
-// Ouvinte específico para o campo invisível
 document.addEventListener("DOMContentLoaded", function() {
   const trap = document.getElementById('coletorTrap');
   if (trap) {
     trap.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') {
         const codigo = trap.value.trim();
-        if (codigo.length > 2) {
-          processarEntradaColetor(codigo);
-        }
-        trap.value = ""; // Limpa para a próxima
+        if (codigo.length > 2) processarEntradaColetor(codigo);
+        trap.value = "";
       }
     });
-    
-    // Se o coletor for muito rápido e o keydown falhar, usamos o input como backup
     trap.addEventListener('input', function() {
         if (trap.value.includes('\n') || trap.value.includes('\r')) {
              processarEntradaColetor(trap.value.trim());
@@ -91,36 +83,25 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
   }
+  atualizarInterfaceColetor();
 });
 
-// Mantém o foco ativo periodicamente se estiver no modo coletor
 setInterval(recuperarFocoColetor, 2000);
-
 window.recuperarFocoColetor = recuperarFocoColetor;
 
-// Ouvinte de teclado global (ajustado para ignorar quando o trap está em uso)
 window.addEventListener('keydown', function(e) {
   if (!modoColetorAtivo) return;
-  if (document.activeElement.id === 'coletorTrap') return; // Já tratado pelo evento do trap
-
-  // Se o foco "vazou" para o body, redireciona para o trap
-  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-      recuperarFocoColetor();
-  }
+  if (document.activeElement.id === 'coletorTrap') return;
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) recuperarFocoColetor();
 }, true);
 
 function processarEntradaColetor(codigo) {
   console.log("Código recebido do coletor:", codigo);
-  
-  // 1. Identifica se a conferência está visível (Tela de Andamento)
   const telaConfAndamento = !document.getElementById('confTelaAndamento').classList.contains('hidden');
   const telaMovimentarAtiva = !document.getElementById('movimentar').classList.contains('hidden');
 
   if (telaConfAndamento) {
-    // Estamos na tela de conferência em andamento
     let resultado = confProcessarLeitura(codigo);
-    
-    // Feedback de conferência
     if (resultado === 'conferida') {
         mostrarToast("Conferida: " + codigo, "sucesso");
         if (navigator.vibrate) navigator.vibrate([100]);
@@ -130,36 +111,17 @@ function processarEntradaColetor(codigo) {
         mostrarToast("Extra: Adicionada à lista", "sucesso");
     }
   } else {
-    // Contexto Movimentação ou Global
     let dados = null;
-    try { 
-        // Tenta limpar o código de possíveis espaços invisíveis (\r ou \n)
-        const codigoLimpo = codigo.trim();
-        dados = JSON.parse(codigoLimpo); 
-    }
+    try { dados = JSON.parse(codigo.trim()); }
     catch (e) { dados = interpretarQRSimplificado(codigo.trim()); }
-
-    if (!dados) {
-      mostrarToast("Código inválido: " + codigo, "erro");
-      return;
-    }
-
+    if (!dados) { mostrarToast("Código inválido: " + codigo, "erro"); return; }
     let registro = localizarRegistroPorQR(dados);
-    
     if (telaMovimentarAtiva) {
-        // Se estiver na tela de movimentação, preenchemos os campos ou fazemos entrada rápida
         qrLidoAtual = { dados, registro };
-        
-        // Se a bobina já existir e não for entrada, mostramos o resultado para o usuário decidir
         if (registro && !registro._removidaEstoque && !registro.consumida) {
             mostrarResultadoQR(dados, registro);
-        } else {
-            entradaRapidaQR(); 
-        }
-    } else {
-        // Se estiver em outra tela, mostramos o resultado
-        mostrarResultadoQR(dados, registro);
-    }
+        } else { entradaRapidaQR(); }
+    } else { mostrarResultadoQR(dados, registro); }
   }
 }
 
@@ -3140,39 +3102,6 @@ async function abrirScannerQR() {
     mostrarToast("Não foi possível abrir a câmera", "erro");
     await fecharScannerQR();
   }
-} else {
-        if (readerContainer) {
-            readerContainer.style.display = "block";
-            readerContainer.innerHTML = "";
-            readerContainer.classList.add("camera-feedback");
-        }
-        document.getElementById("scannerStatus").textContent = "Aponte a câmera para o QR da bobina";
-        leitorQR = new Html5Qrcode("reader");
-        await leitorQR.start(
-          { facingMode: "environment" },
-          { fps: 18, qrbox: { width: 240, height: 240 } },
-          async (decodedText) => { await processarLeituraQR(decodedText); },
-          () => {}
-        );
-    }
-    leitorQRAberto = true;
-    recuperarFocoColetor();
-  } catch (erro) {
-    console.error("Erro ao abrir scanner QR:", erro);
-    mostrarToast("Não foi possível abrir a câmera", "erro");
-    await fecharScannerQR();
-  }
-},
-      { fps: 18, qrbox: { width: 240, height: 240 } },
-      async (decodedText) => { await processarLeituraQR(decodedText); },
-      () => {}
-    );
-    leitorQRAberto = true;
-  } catch (erro) {
-    console.error("Erro ao abrir scanner QR:", erro);
-    mostrarToast("Não foi possível abrir a câmera", "erro");
-    await fecharScannerQR();
-  }
 }
 
 async function fecharScannerQR() {
@@ -3563,52 +3492,6 @@ async function abrirScannerContinuo() {
       }
   }
   recuperarFocoColetor();
-} else {
-      if (readerContainer) {
-          readerContainer.style.display = "block";
-          readerContainer.innerHTML = "";
-          readerContainer.classList.add("camera-feedback");
-      }
-      let cooldown = false;
-      try {
-        leitorContinuo = new Html5Qrcode("readerContinuo");
-        await leitorContinuo.start(
-          { facingMode: "environment" },
-          { fps: 22, qrbox: { width: 240, height: 240 } },
-          async (decodedText) => {
-            if (cooldown) return;
-            cooldown = true;
-            try { await processarLeituraContinua(decodedText); }
-            catch (e) { console.error(e); setCameraFeedback('erro'); }
-            setTimeout(() => { cooldown = false; }, 650);
-          },
-          () => {}
-        );
-        leitorContinuoAberto = true;
-      } catch (erro) {
-        console.error("Erro ao abrir scanner contínuo:", erro);
-        mostrarToast("Não foi possível abrir a câmera", "erro");
-        fecharScannerContinuo();
-      }
-  }
-  recuperarFocoColetor();
-},
-      { fps: 22, qrbox: { width: 240, height: 240 } },
-      async (decodedText) => {
-        if (cooldown) return;
-        cooldown = true;
-        try { await processarLeituraContinua(decodedText); }
-        catch (e) { console.error(e); setCameraFeedback('erro'); }
-        setTimeout(() => { cooldown = false; }, 650);
-      },
-      () => {}
-    );
-    leitorContinuoAberto = true;
-  } catch (erro) {
-    console.error("Erro ao abrir scanner contínuo:", erro);
-    mostrarToast("Não foi possível abrir a câmera", "erro");
-    fecharScannerContinuo();
-  }
 }
 
 async function processarLeituraContinua(textoLido) {
@@ -5225,47 +5108,6 @@ async function confScannerQR() {
       }
   }
   recuperarFocoColetor();
-} conferida(s)</div>
-      `;
-  } else {
-      if (readerContainer) {
-          readerContainer.style.display = "block";
-          readerContainer.innerHTML = '';
-      }
-      try {
-        await fecharTodosScanners();
-        conferencia.leitor = new Html5Qrcode('readerConf');
-        await conferencia.leitor.start(
-          { facingMode: 'environment' },
-          { fps: 12, qrbox: { width: 240, height: 240 } },
-          async (decodedText) => {
-            let resultado = await confProcessarLeitura(decodedText);
-            confLogScanner(resultado, decodedText);
-            document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
-          },
-          () => {}
-        );
-      } catch (e) {
-        console.error('Erro scanner conferência:', e);
-        mostrarToast('Não foi possível abrir a câmera', 'erro');
-        confFecharScanner();
-      }
-  }
-  recuperarFocoColetor();
-},
-      { fps: 12, qrbox: { width: 240, height: 240 } },
-      async (decodedText) => {
-        let resultado = await confProcessarLeitura(decodedText);
-        confLogScanner(resultado, decodedText);
-        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
-      },
-      () => {}
-    );
-  } catch (e) {
-    console.error('Erro scanner conferência:', e);
-    mostrarToast('Não foi possível abrir a câmera', 'erro');
-    confFecharScanner();
-  }
 }
 
 async function confScannerContinuo() {
@@ -5314,54 +5156,6 @@ async function confScannerContinuo() {
       }
   }
   recuperarFocoColetor();
-} conferida(s)</div>
-      `;
-  } else {
-      if (readerContainer) {
-          readerContainer.style.display = "block";
-          readerContainer.innerHTML = '';
-      }
-      let cooldown = false;
-      try {
-        await fecharTodosScanners();
-        conferencia.leitor = new Html5Qrcode('readerConf');
-        await conferencia.leitor.start(
-          { facingMode: 'environment' },
-          { fps: 15, qrbox: { width: 230, height: 230 } },
-          async (decodedText) => {
-            if (cooldown) return;
-            cooldown = true;
-            let resultado = await confProcessarLeitura(decodedText);
-            confLogScanner(resultado, decodedText);
-            document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
-            setTimeout(() => { cooldown = false; }, 900);
-          },
-          () => {}
-        );
-      } catch (e) {
-        console.error('Erro scanner contínuo conferência:', e);
-        mostrarToast('Não foi possível abrir a câmera', 'erro');
-        confFecharScanner();
-      }
-  }
-  recuperarFocoColetor();
-},
-      { fps: 15, qrbox: { width: 230, height: 230 } },
-      async (decodedText) => {
-        if (cooldown) return;
-        cooldown = true;
-        let resultado = await confProcessarLeitura(decodedText);
-        confLogScanner(resultado, decodedText);
-        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
-        setTimeout(() => { cooldown = false; }, 900);
-      },
-      () => {}
-    );
-  } catch (e) {
-    console.error('Erro scanner contínuo conferência:', e);
-    mostrarToast('Não foi possível abrir a câmera', 'erro');
-    confFecharScanner();
-  }
 }
 
 function confLogScanner(resultado, texto) {
@@ -5933,100 +5727,3 @@ window.finalizarConferencia = finalizarConferencia;
 window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
 
-/* ================= MODO COLETOR DE DADOS (HID) — LÓGICA DE CAPTURA ================= */
-
-let modoColetorAtivo = localStorage.getItem('modoColetorAtivo') === 'true';
-let coletorBuffer = "";
-let coletorTimeout = null;
-
-function alternarModoColetor() {
-  const toggle = document.getElementById('coletorToggle');
-  if (toggle) {
-    if (window.event && window.event.currentTarget && window.event.currentTarget.classList.contains('dark-switch-row')) {
-       toggle.checked = !toggle.checked;
-    }
-    modoColetorAtivo = toggle.checked;
-  } else {
-    modoColetorAtivo = !modoColetorAtivo;
-  }
-  
-  localStorage.setItem('modoColetorAtivo', modoColetorAtivo);
-  atualizarInterfaceColetor();
-  if (modoColetorAtivo) {
-    mostrarToast("Modo Coletor Ativado", "sucesso");
-  } else {
-    mostrarToast("Modo Coletor Desativado");
-  }
-}
-
-function recuperarFocoColetor() {
-  if (!modoColetorAtivo) return;
-  const elAtivo = document.activeElement;
-  const isManualInput = elAtivo && (elAtivo.tagName === 'INPUT' || elAtivo.tagName === 'TEXTAREA' || elAtivo.tagName === 'SELECT') && elAtivo.id !== 'coletorTrap';
-  if (!isManualInput) {
-    const trap = document.getElementById('coletorTrap');
-    if (trap) {
-        trap.value = "";
-        trap.focus();
-    }
-  }
-}
-
-document.addEventListener("DOMContentLoaded", function() {
-  const trap = document.getElementById('coletorTrap');
-  if (trap) {
-    trap.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') {
-        const codigo = trap.value.trim();
-        if (codigo.length > 2) processarEntradaColetor(codigo);
-        trap.value = "";
-      }
-    });
-    trap.addEventListener('input', function() {
-        if (trap.value.includes('\n') || trap.value.includes('\r')) {
-             processarEntradaColetor(trap.value.trim());
-             trap.value = "";
-        }
-    });
-  }
-  atualizarInterfaceColetor();
-});
-
-setInterval(recuperarFocoColetor, 2000);
-window.recuperarFocoColetor = recuperarFocoColetor;
-
-window.addEventListener('keydown', function(e) {
-  if (!modoColetorAtivo) return;
-  if (document.activeElement.id === 'coletorTrap') return;
-  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) recuperarFocoColetor();
-}, true);
-
-function processarEntradaColetor(codigo) {
-  console.log("Código recebido do coletor:", codigo);
-  const telaConfAndamento = !document.getElementById('confTelaAndamento').classList.contains('hidden');
-  const telaMovimentarAtiva = !document.getElementById('movimentar').classList.contains('hidden');
-
-  if (telaConfAndamento) {
-    let resultado = confProcessarLeitura(codigo);
-    if (resultado === 'conferida') {
-        mostrarToast("Conferida: " + codigo, "sucesso");
-        if (navigator.vibrate) navigator.vibrate([100]);
-    } else if (resultado === 'duplicada') {
-        mostrarToast("Já conferida", "erro");
-    } else if (resultado === 'extra') {
-        mostrarToast("Extra: Adicionada à lista", "sucesso");
-    }
-  } else {
-    let dados = null;
-    try { dados = JSON.parse(codigo.trim()); }
-    catch (e) { dados = interpretarQRSimplificado(codigo.trim()); }
-    if (!dados) { mostrarToast("Código inválido: " + codigo, "erro"); return; }
-    let registro = localizarRegistroPorQR(dados);
-    if (telaMovimentarAtiva) {
-        qrLidoAtual = { dados, registro };
-        if (registro && !registro._removidaEstoque && !registro.consumida) {
-            mostrarResultadoQR(dados, registro);
-        } else { entradaRapidaQR(); }
-    } else { mostrarResultadoQR(dados, registro); }
-  }
-}
