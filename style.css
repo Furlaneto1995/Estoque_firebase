@@ -206,6 +206,16 @@ table .btn-remove {
 
 /* ================= STATUS COLETOR ================= */
 
+.coletor-trap {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  opacity: 0;
+  height: 1px;
+  width: 1px;
+  z-index: -1;
+}
+
 .status-coletor-placeholder {
   display: flex;
   align-items: center;
