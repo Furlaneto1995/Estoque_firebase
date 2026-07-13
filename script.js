@@ -51,25 +51,6 @@ function atualizarInterfaceColetor() {
   if (modoColetorAtivo) {
     setTimeout(recuperarFocoColetor, 500);
   }
-} : 
-    { scan: '📷 QR', cont: '📷⚡ Contínuo' };
-
-  // Atualiza botões na Movimentação
-  const b1 = document.getElementById('btnScanMov');
-  const b2 = document.getElementById('btnScanContMov');
-  if (b1) b1.textContent = labels.scan;
-  if (b2) b2.textContent = labels.cont;
-
-  // Atualiza botões na Conferência
-  const b3 = document.getElementById('btnScanConf');
-  const b4 = document.getElementById('btnScanContConf');
-  if (b3) b3.textContent = labels.scan;
-  if (b4) b4.textContent = labels.cont;
-
-  if (modoColetorAtivo) {
-    // Foca no campo invisível
-    setTimeout(recuperarFocoColetor, 500);
-  }
 }
 
 function recuperarFocoColetor() {
