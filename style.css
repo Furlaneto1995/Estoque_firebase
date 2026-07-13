@@ -204,6 +204,44 @@ table .btn-remove {
   transform: scale(0.92);
 }
 
+/* ================= STATUS COLETOR ================= */
+
+.status-coletor-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #f0fdf4;
+  border: 2px dashed #16a34a;
+  border-radius: 10px;
+  padding: 12px;
+  color: #166534;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 4px 0;
+}
+
+body.dark-mode .status-coletor-placeholder {
+  background: #064e3b;
+  border-color: #10b981;
+  color: #d1fae5;
+}
+
+.status-bolinha {
+  width: 10px;
+  height: 10px;
+  background-color: #16a34a;
+  border-radius: 50%;
+  box-shadow: 0 0 0 rgba(22, 163, 74, 0.4);
+  animation: pulsoVerde 2s infinite;
+}
+
+@keyframes pulsoVerde {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(22, 163, 74, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+
 /* ================= NAVEGAÇÃO ================= */
 
 .nav-top {
