@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Estoque Mobile</title>
-  <link rel="stylesheet" href="style.css?v=2002">
+  <link rel="stylesheet" href="style.css?v=2006">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#1e3a8a">
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
@@ -81,9 +81,13 @@
 
   <button class="last-item" onclick="usarUltimo()">Repetir último</button>
 
-  <div class="qr-actions-row">
+  <div class="qr-actions-row" id="cameraActionsMov">
     <button class="btn-scan-qr btn-scan-compact" onclick="abrirScannerQR()">📷 QR</button>
     <button class="btn-scan-continuo btn-scan-compact" onclick="abrirScannerContinuo()">📷⚡ Contínuo</button>
+  </div>
+
+  <div id="statusColetorMov" class="status-coletor-placeholder hidden">
+    <span class="status-bolinha"></span> ⌨️ Aguardando leitura do coletor...
   </div>
 
   <div style="display:flex; align-items:center; gap:8px;">
@@ -479,6 +483,16 @@
       </button>
       <button class="btn-opcao btn-editar-opcao" onclick="abrirConfigDataProducao()">📅 Data de produção</button>
               <button class="btn-opcao btn-editar-opcao" onclick="abrirInicioConferencia()">📋 Conferência</button>
+      <div class="btn-opcao dark-switch-row" onclick="alternarModoColetor()">
+        <div class="dark-switch-label">
+          <span id="coletorIcon">⌨️</span>
+          Modo coletor
+        </div>
+        <label class="switch" onclick="event.stopPropagation()">
+          <input type="checkbox" id="coletorToggle" onchange="alternarModoColetor()">
+          <span class="switch-slider"></span>
+        </label>
+      </div>
       <div class="btn-opcao dark-switch-row" onclick="alternarModoEscuro()">
         <div class="dark-switch-label">
           <span id="darkModeIcon">🌙</span>
@@ -718,9 +732,13 @@
       </div>
 
       <!-- Scanner -->
-      <div class="qr-actions-row">
+      <div class="qr-actions-row" id="cameraActionsConf">
         <button class="btn-scan-qr btn-scan-compact" onclick="confScannerQR()">📷 Escanear QR</button>
         <button class="btn-scan-continuo btn-scan-compact" onclick="confScannerContinuo()">📷⚡ Contínuo</button>
+      </div>
+
+      <div id="statusColetorConf" class="status-coletor-placeholder hidden">
+        <span class="status-bolinha"></span> ⌨️ Coletor ativo (Fisico)
       </div>
 
       <!-- Busca manual -->
@@ -888,7 +906,7 @@ atualizarCampoDataManualGerador();
 
 
 </script>
-<script src="script.js?v=2005"></script>
+<script src="script.js?v=2006"></script>
 
 <!-- ================= MODAL CONFIRMAR SINCRONIZAR ================= -->
 <div class="modal-overlay hidden" id="modalConfirmarSync">
