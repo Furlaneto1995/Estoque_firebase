@@ -85,12 +85,8 @@
   <button class="last-item" onclick="usarUltimo()">Repetir último</button>
 
   <div class="qr-actions-row" id="cameraActionsMov">
-    <button class="btn-scan-qr btn-scan-compact" onclick="abrirScannerQR()">📷 QR</button>
-    <button class="btn-scan-continuo btn-scan-compact" onclick="abrirScannerContinuo()">📷⚡ Contínuo</button>
-  </div>
-
-  <div id="statusColetorMov" class="status-coletor-placeholder hidden">
-    <span class="status-bolinha"></span> ⌨️ Aguardando leitura do coletor...
+    <button id="btnScanMov" class="btn-scan-qr btn-scan-compact" onclick="abrirScannerQR()">📷 QR</button>
+    <button id="btnScanContMov" class="btn-scan-continuo btn-scan-compact" onclick="abrirScannerContinuo()">📷⚡ Contínuo</button>
   </div>
 
   <div style="display:flex; align-items:center; gap:8px;">
@@ -734,14 +730,9 @@
         </div>
       </div>
 
-      <!-- Scanner -->
       <div class="qr-actions-row" id="cameraActionsConf">
-        <button class="btn-scan-qr btn-scan-compact" onclick="confScannerQR()">📷 Escanear QR</button>
-        <button class="btn-scan-continuo btn-scan-compact" onclick="confScannerContinuo()">📷⚡ Contínuo</button>
-      </div>
-
-      <div id="statusColetorConf" class="status-coletor-placeholder hidden">
-        <span class="status-bolinha"></span> ⌨️ Coletor ativo (Fisico)
+        <button id="btnScanConf" class="btn-scan-qr btn-scan-compact" onclick="confScannerQR()">📷 Escanear QR</button>
+        <button id="btnScanContConf" class="btn-scan-continuo btn-scan-compact" onclick="confScannerContinuo()">📷⚡ Contínuo</button>
       </div>
 
       <!-- Busca manual -->
@@ -944,5 +935,5 @@ atualizarCampoDataManualGerador();
   </div>
 </div>
 
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1aa80cd8c871e65',t:'MTc4Mzk2ODkzOQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
