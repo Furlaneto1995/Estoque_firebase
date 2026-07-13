@@ -1,3 +1,125 @@
+/* ================= MODO COLETOR DE DADOS (HID) ================= */
+
+let modoColetorAtivo = localStorage.getItem('modoColetorAtivo') === 'true';
+let coletorBuffer = "";
+let coletorTimeout = null;
+
+function alternarModoColetor() {
+  const toggle = document.getElementById('coletorToggle');
+  if (toggle) {
+    // Se a função foi chamada pelo clique na div/label
+    if (window.event && window.event.currentTarget && window.event.currentTarget.classList.contains('dark-switch-row')) {
+       toggle.checked = !toggle.checked;
+    }
+    modoColetorAtivo = toggle.checked;
+  } else {
+    modoColetorAtivo = !modoColetorAtivo;
+  }
+  
+  localStorage.setItem('modoColetorAtivo', modoColetorAtivo);
+  atualizarInterfaceColetor();
+  if (modoColetorAtivo) {
+    mostrarToast("Modo Coletor Ativado", "sucesso");
+  } else {
+    mostrarToast("Modo Coletor Desativado");
+  }
+}
+
+function atualizarInterfaceColetor() {
+  const toggle = document.getElementById('coletorToggle');
+  const icone = document.getElementById('coletorIcon');
+  if (toggle) toggle.checked = modoColetorAtivo;
+  if (icone) icone.textContent = modoColetorAtivo ? '🔌' : '⌨️';
+
+  // Gerencia visibilidade dos botões de câmera vs status do coletor
+  const camMov = document.getElementById('cameraActionsMov');
+  const statMov = document.getElementById('statusColetorMov');
+  const camConf = document.getElementById('cameraActionsConf');
+  const statConf = document.getElementById('statusColetorConf');
+
+  if (modoColetorAtivo) {
+    if (camMov) camMov.classList.add('hidden');
+    if (statMov) statMov.classList.remove('hidden');
+    if (camConf) camConf.classList.add('hidden');
+    if (statConf) statConf.classList.remove('hidden');
+  } else {
+    if (camMov) camMov.classList.remove('hidden');
+    if (statMov) statMov.classList.add('hidden');
+    if (camConf) camConf.classList.remove('hidden');
+    if (statConf) statConf.classList.add('hidden');
+  }
+}
+
+// Inicializa a interface no carregamento
+document.addEventListener("DOMContentLoaded", function() {
+  atualizarInterfaceColetor();
+});
+
+// Ouvinte de teclado global para o coletor
+window.addEventListener('keydown', function(e) {
+  if (!modoColetorAtivo) return;
+
+  // Se o foco estiver em um campo de entrada de texto e não for o Enter, 
+  // deixamos o comportamento padrão (a menos que você queira que o coletor funcione sempre)
+  // Mas coletores costumam enviar o código "limpo".
+  
+  if (e.key === 'Enter') {
+    if (coletorBuffer.length > 2) {
+      processarEntradaColetor(coletorBuffer);
+    }
+    coletorBuffer = "";
+    e.preventDefault();
+  } else {
+    // Apenas captura caracteres imprimíveis
+    if (e.key.length === 1) {
+      coletorBuffer += e.key;
+      
+      // Limpa o buffer se demorar muito entre as teclas (evita capturar digitação manual lenta)
+      clearTimeout(coletorTimeout);
+      coletorTimeout = setTimeout(() => {
+        coletorBuffer = "";
+      }, 200); // 200ms é muito tempo para um coletor, mas seguro para redes oscilantes
+    }
+  }
+});
+
+function processarEntradaColetor(codigo) {
+  console.log("Código recebido do coletor:", codigo);
+  
+  // 1. Identifica o contexto (Conferência ou Movimentação)
+  const modalConfAberto = !document.getElementById('modalConferencia').classList.contains('hidden');
+  const telaMovimentarAtiva = !document.getElementById('movimentar').classList.contains('hidden');
+
+  if (modalConfAberto) {
+    // Estamos na tela de conferência
+    let resultado = confProcessarLeitura(codigo);
+    // Feedback visual/sonoro para conferência
+    if (resultado === 'conferida') mostrarToast("Conferida: " + codigo, "sucesso");
+    else if (resultado === 'extra') mostrarToast("Extra: " + codigo, "erro");
+  } else {
+    // Contexto padrão: Busca/Entrada rápida
+    let dados = null;
+    try { dados = JSON.parse(codigo); }
+    catch (e) { dados = interpretarQRSimplificado(codigo); }
+
+    if (!dados) {
+      mostrarToast("Código inválido", "erro");
+      return;
+    }
+
+    let registro = localizarRegistroPorQR(dados);
+    
+    if (telaMovimentarAtiva) {
+        // Se estiver na tela de movimentação, preenchemos os campos ou fazemos entrada rápida
+        qrLidoAtual = { dados, registro };
+        entradaRapidaQR(); 
+    } else {
+        // Se estiver em outra tela, mostramos o resultado
+        mostrarResultadoQR(dados, registro);
+    }
+  }
+}
+
 /* ================= TOAST ================= */
 
 function mostrarToast(texto = 'Concluído', tipo = 'sucesso'){
