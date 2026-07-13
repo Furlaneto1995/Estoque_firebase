@@ -42,6 +42,9 @@ function atualizarInterfaceColetor() {
     if (statMov) statMov.classList.remove('hidden');
     if (camConf) camConf.classList.add('hidden');
     if (statConf) statConf.classList.remove('hidden');
+    
+    // Foca no campo invisível
+    setTimeout(recuperarFocoColetor, 500);
   } else {
     if (camMov) camMov.classList.remove('hidden');
     if (statMov) statMov.classList.add('hidden');
@@ -50,54 +53,61 @@ function atualizarInterfaceColetor() {
   }
 }
 
-// Inicializa a interface no carregamento
+function recuperarFocoColetor() {
+  if (!modoColetorAtivo) return;
+  
+  // Só recupera o foco se o usuário não estiver intencionalmente em um campo de texto manual
+  const elAtivo = document.activeElement;
+  const isManualInput = elAtivo && (elAtivo.tagName === 'INPUT' || elAtivo.tagName === 'TEXTAREA' || elAtivo.tagName === 'SELECT') && elAtivo.id !== 'coletorTrap';
+  
+  if (!isManualInput) {
+    const trap = document.getElementById('coletorTrap');
+    if (trap) {
+        trap.value = ""; // Limpa antes de focar
+        trap.focus();
+    }
+  }
+}
+
+// Ouvinte específico para o campo invisível
 document.addEventListener("DOMContentLoaded", function() {
-  atualizarInterfaceColetor();
+  const trap = document.getElementById('coletorTrap');
+  if (trap) {
+    trap.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        const codigo = trap.value.trim();
+        if (codigo.length > 2) {
+          processarEntradaColetor(codigo);
+        }
+        trap.value = ""; // Limpa para a próxima
+      }
+    });
+    
+    // Se o coletor for muito rápido e o keydown falhar, usamos o input como backup
+    trap.addEventListener('input', function() {
+        if (trap.value.includes('\n') || trap.value.includes('\r')) {
+             processarEntradaColetor(trap.value.trim());
+             trap.value = "";
+        }
+    });
+  }
 });
 
-// Ouvinte de teclado global para o coletor
+// Mantém o foco ativo periodicamente se estiver no modo coletor
+setInterval(recuperarFocoColetor, 2000);
+
+window.recuperarFocoColetor = recuperarFocoColetor;
+
+// Ouvinte de teclado global (ajustado para ignorar quando o trap está em uso)
 window.addEventListener('keydown', function(e) {
   if (!modoColetorAtivo) return;
+  if (document.activeElement.id === 'coletorTrap') return; // Já tratado pelo evento do trap
 
-  // Ignora teclas de controle puro (Shift, Alt, etc)
-  if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt') return;
-
-  // Detecta o final da leitura (Enter)
-  if (e.key === 'Enter' || e.key === 'NumpadEnter') {
-    e.preventDefault(); // Impede que o Enter envie formulários ou pule linha
-    
-    if (coletorBuffer.length > 2) {
-      // Pequeno delay para garantir que o coletor terminou de enviar tudo
-      const codigoFinal = coletorBuffer.trim();
-      processarEntradaColetor(codigoFinal);
-      
-      // Limpa qualquer campo de texto que possa ter recebido caracteres
-      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
-        // Se o foco estava num input de busca, limpamos o que "vazou" para lá
-        if (document.activeElement.id === 'buscaItem' || document.activeElement.id === 'buscaEstoque' || document.activeElement.id === 'buscaHistorico' || document.activeElement.id === 'confBusca') {
-           setTimeout(() => { document.activeElement.value = ""; }, 10);
-        }
-      }
-    }
-    coletorBuffer = "";
-    return;
+  // Se o foco "vazou" para o body, redireciona para o trap
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+      recuperarFocoColetor();
   }
-
-  // Captura apenas caracteres individuais (caracteres imprimíveis)
-  if (e.key.length === 1) {
-    coletorBuffer += e.key;
-
-    // Se o modo coletor está ativo, queremos que a leitura seja "invisível"
-    // Mas se o usuário estiver digitando no teclado do PC, isso pode atrapalhar.
-    // Coletores são muito rápidos, então se o tempo entre as teclas for curto, bloqueamos a inserção no input.
-    
-    clearTimeout(coletorTimeout);
-    coletorTimeout = setTimeout(() => {
-      // Se demorar mais de 200ms, provavelmente é digitação humana, então limpamos o buffer
-      coletorBuffer = "";
-    }, 250); 
-  }
-}, true); // O 'true' aqui é importante para capturar o evento antes de outros elementos
+}, true);
 
 function processarEntradaColetor(codigo) {
   console.log("Código recebido do coletor:", codigo);
