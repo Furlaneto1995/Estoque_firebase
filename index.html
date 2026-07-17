@@ -805,7 +805,10 @@
         <span>Leitura do Coletor:</span>
         <span id="confScannerStatus" style="font-size:13px; font-weight:700; color:#16a34a;">0 conferida(s)</span>
       </div>
-      <input type="text" id="inputColetorVisivel" placeholder="Aguardando leitura do coletor..." style="width:100%; padding:12px; font-size:15px; border:2px solid #2563eb; border-radius:8px; text-align:center; background:#ffffff; color:#0f172a; outline:none;" autocomplete="off">
+      <div style="display:flex; gap:6px;">
+        <input type="text" id="inputColetorVisivel" placeholder="Aguardando leitura do coletor..." style="flex:1; padding:12px; font-size:15px; border:2px solid #2563eb; border-radius:8px; text-align:center; background:#ffffff; color:#0f172a; outline:none;" autocomplete="off">
+        <button onclick="processarColetorManual()" class="btn-confirmar" style="width:auto; padding:0 16px; margin:0; border-radius:8px;">OK</button>
+      </div>
       <div style="font-size:11px; color:#64748b; text-align:center;">
         💡 O código lido pelo coletor aparecerá acima e será processado automaticamente
       </div>
@@ -934,5 +937,5 @@ atualizarCampoDataManualGerador();
   </div>
 </div>
 
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1c9d4a3ac8226ed',t:'MTc4NDI5NzQzMQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
