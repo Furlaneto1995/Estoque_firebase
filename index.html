@@ -799,16 +799,18 @@
     </div>
     <div id="readerConf" style="width:100%; min-height:260px;"></div>
     
-    <!-- Input invisível para capturar digitação/colagem do coletor de dados -->
-    <input type="text" id="inputColetorInvisivel" style="position: absolute; left: -9999px; opacity: 0;" autocomplete="off">
-
     <!-- Coletor Log Container (substitui a câmera e o quadrado grande) -->
     <div id="coletorDisplayContainer" class="hidden" style="flex:1; display:flex; flex-direction:column; min-height:0; gap:8px; padding:4px 0;">
       <div style="font-size:13px; font-weight:600; color:#475569; display:flex; justify-content:space-between; align-items:center;">
-        <span>Histórico de leituras:</span>
+        <span>Leitura do Coletor:</span>
         <span id="confScannerStatus" style="font-size:13px; font-weight:700; color:#16a34a;">0 conferida(s)</span>
       </div>
-      <div id="confScannerLog" style="flex:1; min-height:200px; overflow-y:auto; font-size:13px; color:#1e293b; border:1px solid #cbd5e1; border-radius:8px; padding:10px; background:#f8fafc;"></div>
+      <input type="text" id="inputColetorVisivel" placeholder="Aguardando leitura do coletor..." style="width:100%; padding:12px; font-size:15px; border:2px solid #2563eb; border-radius:8px; text-align:center; background:#ffffff; color:#0f172a; outline:none;" autocomplete="off">
+      <div style="font-size:11px; color:#64748b; text-align:center;">
+        💡 O código lido pelo coletor aparecerá acima e será processado automaticamente
+      </div>
+      <div style="font-size:13px; font-weight:600; color:#475569; margin-top:2px;">Histórico de leituras:</div>
+      <div id="confScannerLog" style="flex:1; min-height:140px; overflow-y:auto; font-size:13px; color:#1e293b; border:1px solid #cbd5e1; border-radius:8px; padding:8px; background:#f8fafc;"></div>
     </div>
 
     <button class="btn-modal btn-cancelar" onclick="confFecharScanner()" style="margin-top:10px;">Finalizar</button>
@@ -932,5 +934,5 @@ atualizarCampoDataManualGerador();
   </div>
 </div>
 
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1c9d4a3ac8226ed',t:'MTc4NDI5NzQzMQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
