@@ -1,6 +1,8 @@
 
 let collectorFocusTimer = null;
 let collectorReadTimer = null;
+let coletorBuffer = '';
+let coletorInterval = null;
 
 function iniciarMonitoramentoColetor() {
   const input = document.getElementById("collectorInput");
@@ -59,7 +61,6 @@ async function processarLeituraColetorInput() {
 }
 
 
-let coletorInterval = null;
 
 
 
