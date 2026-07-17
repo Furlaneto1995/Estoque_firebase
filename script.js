@@ -5013,6 +5013,16 @@ async function confAbrirColetor() {
   }, 100);
 }
 
+async function processarColetorManual() {
+  let inp = document.getElementById('inputColetorVisivel');
+  if (!inp) return;
+  let codigo = inp.value.trim();
+  inp.value = '';
+  if (!codigo) { mostrarToast('Digite ou leia um código', 'erro'); return; }
+  let resultado = await confProcessarLeitura(codigo);
+  confLogScanner(resultado, codigo);
+}
+
 function confLogScanner(resultado, texto) {
   let log = document.getElementById('confScannerLog');
   let agora = new Date().toLocaleTimeString();
@@ -5584,6 +5594,7 @@ window.confRemoverExtra = confRemoverExtra;
 window.confFiltrarLista = confFiltrarLista;
 window.confScannerQR = confScannerQR;
 window.confAbrirColetor = confAbrirColetor;
+window.processarColetorManual = processarColetorManual;
 window.confScannerContinuo = confScannerContinuo;
 window.confFecharScanner = confFecharScanner;
 window.finalizarConferencia = finalizarConferencia;
