@@ -4980,7 +4980,7 @@ async function confAbrirColetor() {
   document.getElementById('modalScannerConf').classList.remove('hidden');
 
   setTimeout(() => {
-    let inp = document.getElementById('inputColetorInvisivel');
+    let inp = document.getElementById('inputColetorVisivel');
     if (inp) {
       inp.value = '';
       inp.focus();
@@ -5565,23 +5565,34 @@ window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
 
 document.addEventListener("DOMContentLoaded", function() {
-  let inp = document.getElementById('inputColetorInvisivel');
+  let inp = document.getElementById('inputColetorVisivel');
+  let coletorTimer = null;
   if (inp) {
-    inp.addEventListener('input', async function() {
+    inp.addEventListener('input', function() {
+      if (coletorTimer) clearTimeout(coletorTimer);
       let val = this.value;
       if (val.includes('\n') || val.includes('\r') || val.length >= 8) {
         let codigo = val.replace(/[\r\n]+/g, '').trim();
         this.value = '';
         if (codigo) {
-          let resultado = await confProcessarLeitura(codigo);
-          confLogScanner(resultado, codigo);
+          confProcessarLeitura(codigo).then(res => confLogScanner(res, codigo));
         }
+      } else {
+        coletorTimer = setTimeout(async () => {
+          let codigo = this.value.trim();
+          this.value = '';
+          if (codigo.length >= 3) {
+            let res = await confProcessarLeitura(codigo);
+            confLogScanner(res, codigo);
+          }
+        }, 250);
       }
     });
 
     inp.addEventListener('keydown', async function(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
+        if (coletorTimer) clearTimeout(coletorTimer);
         let codigo = this.value.trim();
         this.value = '';
         if (!codigo) return;
@@ -5595,7 +5606,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (conferencia && conferencia.coletorMode) {
       let modal = document.getElementById('modalScannerConf');
       if (modal && !modal.classList.contains('hidden')) {
-        let inp = document.getElementById('inputColetorInvisivel');
+        let inp = document.getElementById('inputColetorVisivel');
         if (inp && document.activeElement !== inp) {
           inp.focus();
         }
