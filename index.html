@@ -1,1 +1,938 @@
-.
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estoque Mobile</title>
+  <link rel="stylesheet" href="style.css?v=2002">
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#1e3a8a">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+</head>
+
+<body>
+
+<!-- ================= HEADER ================= -->
+<div class="top-header" id="appHeader">
+
+  <button id="btnDesfazer" class="btn-icon btn-undo"
+          onclick="desfazerAcao()" title="Desfazer">↶</button>
+
+  <h1 class="titulo-conferencia">Conferência de Estoques</h1>
+
+  <button id="btnRefazer" class="btn-icon btn-redo"
+          onclick="refazerAcao()" title="Refazer">↷</button>
+
+  <div class="header-buttons">
+    <button id="btnSalvarFirebase" class="btn-icon"
+            onclick="salvarManualFirebase()" title="Salvar na nuvem">💾</button>
+    <button id="btnSincronizarFirebase" class="btn-icon"
+            onclick="confirmarSincronizar()" title="Baixar da nuvem">🔄</button>
+    <button id="btnConfig" class="btn-icon"
+            onclick="abrirModalConfig()">☰</button>
+    <button id="btnExpandir" class="btn-icon"
+            onclick="alternarModoVisualizacao()">⛶</button>
+  </div>
+
+</div>
+
+<!-- ================= NAV ================= -->
+<div class="nav-top" id="appNav">
+  <button onclick="mostrarTela('movimentar')" class="btn-main">Movimentação</button>
+  <button onclick="mostrarTela('estoque')"    class="btn-main">Estoque</button>
+  <button onclick="mostrarTela('historico')"  class="btn-main">Histórico</button>
+</div>
+
+<!-- ================= MOVIMENTAR ================= -->
+<div id="movimentar" class="card">
+
+  <select id="tipoSelect" onchange="filtrarPorTipo()">
+    <option value="">Selecionar tipo</option>
+    <option value="brf">BRF</option>
+    <option value="tampas">Tampas</option>
+    <option value="fundo">Fundo</option>
+    <option value="laminacao">1ª Laminação</option>
+  </select>
+
+  <select id="itemSelect">
+    <option value="">Selecionar item</option>
+  </select>
+
+  <select id="versaoSelect">
+    <option value="">Selecionar versão</option>
+  </select>
+
+  <div id="saldoAtual"></div>
+
+  <div class="busca-wrapper">
+    <div class="input-row">
+      <input id="buscaItem" placeholder="Busca manual" oninput="filtrar()">
+      <button class="btn-clear" onclick="limparBusca()">X</button>
+    </div>
+    <div id="sugestoes" class="suggestions hidden"></div>
+  </div>
+
+  <button class="last-item" onclick="usarUltimo()">Repetir último</button>
+
+  <div class="qr-actions-row">
+    <button class="btn-scan-qr btn-scan-compact" onclick="abrirScannerQR()">📷 QR</button>
+    <button class="btn-scan-continuo btn-scan-compact" onclick="abrirScannerContinuo()">📷⚡ Contínuo</button>
+  </div>
+
+  <div style="display:flex; align-items:center; gap:8px;">
+    <input type="number" id="quantidade" placeholder="Peso (kg)" style="flex:1; margin:0;">
+  </div>
+
+  <div class="input-row">
+    <button class="btn-add btn-mov" onclick="movimentar('add')">Entrada</button>
+    <button class="btn-remove btn-mov" onclick="movimentar('remove')">Saída</button>
+  </div>
+
+</div>
+
+<!-- ================= ESTOQUE ================= -->
+<div id="estoque" class="card hidden">
+  <div id="resumoEstoque" class="cards-container">
+    <div class="card-total geral">
+      <span>Total Geral</span>
+      <strong id="totalGeral">0 kg</strong>
+      <small id="totalBobinas" style="font-size:11px; color:#64748b;">0 bobinas</small>
+    </div>
+    <div class="card-total brf clicavel" onclick="abrirDetalhes('brf')">
+      <span>BRF</span>
+      <strong id="totalBrf">0 kg</strong>
+      <div class="barra"><div id="barraBrf" class="barra-preenchimento"></div></div>
+    </div>
+    <div class="card-total tampas clicavel" onclick="abrirDetalhes('tampas')">
+      <span>Tampas</span>
+      <strong id="totalTampas">0 kg</strong>
+      <div class="barra"><div id="barraTampas" class="barra-preenchimento"></div></div>
+    </div>
+   <div class="card-total fundo clicavel" onclick="abrirDetalhes('fundo')">
+  <span>Fundo</span>
+  <strong id="totalFundo">0 kg</strong>
+  <div class="barra"><div id="barraFundo" class="barra-preenchimento"></div></div>
+</div>
+    <div class="card-total laminacao clicavel" onclick="abrirDetalhes('laminacao')">
+      <span>1ª Laminação</span>
+      <strong id="totalLaminacao">0 kg</strong>
+      <div class="barra"><div id="barraLaminacao" class="barra-preenchimento"></div></div>
+    </div>
+  </div>
+
+  <div class="input-row">
+    <input id="buscaEstoque" placeholder="Buscar" oninput="atualizarTabela()">
+    <button class="btn-clear" id="btnLimparEstoque" onclick="document.getElementById('buscaEstoque').value=''; atualizarTabela();">X</button>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th class="sortable none" onclick="ordenarEstoque('tipo')">Tipo<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarEstoque('item')">Item<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarEstoque('versao')">V.<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarEstoque('tamanho')">Medidas<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarEstoque('peso')">Kg<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarEstoque('qtdEntradas')">QTD<span class="sort-arrow"></span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tabela"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ================= HISTÓRICO ================= -->
+<div id="historico" class="card hidden">
+  <div class="filtro-periodo">
+    <input type="date" id="dataInicio" onchange="atualizarHistorico()">
+    <input type="date" id="dataFim" onchange="atualizarHistorico()">
+    <button id="btnLimparFiltro" class="btn-limpar-filtro">Limpar</button>
+  </div>
+
+  <div class="input-row">
+    <input id="buscaHistorico" placeholder="Buscar" oninput="atualizarHistorico()">
+    <button class="btn-clear" id="btnLimparHistorico" onclick="document.getElementById('buscaHistorico').value=''; atualizarHistorico();">X</button>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th class="sortable none" onclick="ordenarHistorico('data')">Data<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarHistorico('movimentacao')">Mov.<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarHistorico('tipo')">Tipo<span class="sort-arrow"></span></th>
+          <th>Produto</th>
+          <th class="sortable none" onclick="ordenarHistorico('qtd')">Kg<span class="sort-arrow"></span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="historicoTabela"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ================= DETALHES POR TIPO ================= -->
+<div id="detalhesTipo" class="card hidden">
+  <div class="detalhes-header">
+    <button class="btn-voltar" onclick="fecharDetalhes()">← Voltar</button>
+    <h2 id="detalheTitulo">BRF</h2>
+    <div class="detalhes-info">
+      <span id="detalheTotalPeso">0 kg</span>
+      <small id="detalheTotalBobinas">0 bobinas</small>
+    </div>
+  </div>
+
+  <div class="input-row">
+    <input id="buscaDetalhes" placeholder="Buscar" oninput="atualizarDetalhes()">
+    <button id="btnLimparDetalhes" class="btn-clear" onclick="document.getElementById('buscaDetalhes').value=''; atualizarDetalhes();">X</button>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th class="sortable none" onclick="ordenarDetalhes('item')">Item<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarDetalhes('versao')">V.<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarDetalhes('tamanho')">Medidas<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarDetalhes('peso')">Kg<span class="sort-arrow"></span></th>
+          <th class="sortable none" onclick="ordenarDetalhes('qtd')">QTD<span class="sort-arrow"></span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="detalhesTabela"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ================= MODAL PENDENTES ================= -->
+<div id="modalPendentes" class="modal-overlay hidden">
+  <div class="modal-gerador-content">
+    <div class="modal-saida-header">
+      <h3>Etiquetas pendentes</h3>
+      <button class="config-fechar" onclick="fecharPendentes()">✕</button>
+    </div>
+    <div id="pendentesTotal" style="text-align:center; font-size:14px; font-weight:700; color:#1e3a8a; padding:4px 0;"></div>
+    <div id="pendentesLista" class="gerador-lista-scroll" style="flex:1; min-height:0;"></div>
+    <div class="gerador-botoes-fixos">
+      <button class="btn-main" onclick="pendentesVisualizarZPL()">🔍 Visualizar</button>
+      <button class="btn-excluir-opcao" onclick="pendentesLimparTudo()">🗑 Limpar tudo</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL GERADOR DE ETIQUETAS ================= -->
+<div id="modalGerador" class="modal-overlay hidden">
+  <div class="modal-gerador-content">
+    <div class="modal-saida-header">
+      <h3>Gerador de Etiquetas</h3>
+      <button class="config-fechar" onclick="geradorFecharSimples()">✕</button>
+    </div>
+
+    <div class="gerador-passos">
+      <div class="gerador-passo ativo" data-passo="1" onclick="geradorIrPassoClicavel(1)">
+        <span class="gerador-passo-num">1</span> Adicionar
+      </div>
+      <div class="gerador-passo" data-passo="2" onclick="geradorIrPassoClicavel(2)">
+        <span class="gerador-passo-num">2</span> Gerar
+      </div>
+    </div>
+
+    <!-- PASSO 1 -->
+    <div id="geradorPasso1" class="gerador-conteudo">
+      <div class="gerador-form-section">
+        <select id="geradorTipo" onchange="geradorFiltrarTipo()">
+          <option value="">Selecionar tipo</option>
+          <option value="brf">BRF</option>
+          <option value="tampas">Tampa</option>
+	  <option value="fundo">Fundo</option>
+          <option value="laminacao">1ª Laminação</option>
+        </select>
+
+        <select id="geradorItem" onchange="geradorFiltrarItem()">
+          <option value="">Selecionar item</option>
+        </select>
+
+        <select id="geradorVersao" onchange="geradorSelecionouVersao()">
+          <option value="">Selecionar versão</option>
+        </select>
+
+        <div class="input-row">
+          <input id="geradorBusca" placeholder="Busca manual" oninput="geradorFiltrarBusca()">
+          <button class="btn-clear" onclick="geradorLimparBusca()">X</button>
+        </div>
+
+        <div id="geradorSugestoes" class="suggestions hidden"></div>
+
+        <div style="display:flex; gap:6px;">
+          <input type="number" id="geradorPeso" placeholder="Peso (kg)" style="flex:2;">
+          <input type="number" id="geradorQtd" placeholder="Qtd" value="1" min="1" style="flex:1;">
+        </div>
+
+        <!-- Campo de data manual (só aparece quando a opção "manual" está ativa) -->
+        <div id="geradorDataManualContainer" class="hidden">
+          <input type="datetime-local" id="geradorDataManual" style="width:100%;">
+        </div>
+
+        <div style="display:flex; gap:8px;">
+          <button class="btn-add" onclick="geradorAdicionar()" style="flex:1;">+ Adicionar</button>
+          <button class="last-item" onclick="geradorRepetirUltimo()" style="flex:1;">Repetir último</button>
+        </div>
+      </div>
+
+      <div id="geradorResumoTotal" class="gerador-resumo-total" style="margin-top:8px;"></div>
+      <div id="geradorLista1" class="gerador-lista-scroll"></div>
+    </div>
+
+    <!-- PASSO 2 -->
+    <div id="geradorPasso2" class="gerador-conteudo hidden">
+      <div id="geradorExportTotal" class="gerador-resumo-total"></div>
+      <div id="geradorLista2" class="gerador-lista-scroll" style="flex:1; min-height:0;"></div>
+
+      <div class="gerador-botoes-fixos">
+        <!-- ANTES DE CONCLUIR -->
+        <div id="geradorBotoesAntes">
+          <div style="display:flex; gap:8px;">
+            <button class="btn-cancelar" onclick="geradorCancelar()" style="flex:1;">✕ Cancelar</button>
+            <button class="btn-confirmar" onclick="geradorConcluir()" style="flex:1;">✅ Concluir</button>
+          </div>
+        </div>
+
+        <!-- DEPOIS DE CONCLUIR -->
+        <div id="geradorBotoesDepois" class="hidden">
+          <button class="btn-main" onclick="geradorVisualizarZPL()">🔍 Visualizar</button>
+          <button class="btn-excluir-opcao" onclick="geradorLimparEFechar()">🗑 Limpar tudo</button>
+        </div>
+      </div>
+    </div>
+
+  </div> <!-- fecha modal-gerador-content -->
+</div>   <!-- fecha modalGerador --> 
+
+<!-- ================= MODAL OPÇÕES LONG PRESS ================= -->
+<div id="modalOpcoes" class="modal-overlay hidden">
+  <div class="modal-opcoes-content">
+    <h3 id="modalOpcoesTitulo">Opções</h3>
+    <button id="btnOpcaoEditar" class="btn-opcao btn-editar-opcao" onclick="editarBobina()">✏️ Editar peso</button>
+    <button id="btnOpcaoConsumir" class="btn-opcao btn-consumir-opcao" onclick="consumirBobina()">✔️ Marcar como consumida</button>
+    <button id="btnOpcaoExcluir" class="btn-opcao btn-excluir-opcao" onclick="excluirBobina()">🗑️ Excluir</button>
+    <button id="btnOpcaoExcluirConsumidas" class="btn-opcao btn-excluir-opcao" onclick="excluirConsumidas()">🗑️ Excluir consumidas</button>
+    <button class="btn-opcao btn-cancelar-opcao" onclick="fecharModalOpcoes()">Cancelar</button>
+  </div>
+</div>
+
+<!-- ================= MODAL SAÍDA BOBINAS ================= -->
+<div id="modalSaida" class="modal-overlay hidden">
+  <div class="modal-saida-content">
+    <div class="modal-saida-header">
+      <h3 id="modalSaidaTitulo">Saída</h3>
+      <span id="modalSaidaRestante" class="saida-restante">Restante: 0 kg</span>
+    </div>
+    <div class="modal-saida-tabela">
+      <table>
+                <thead>
+          <tr>
+            <th width="30" id="thDesmarcar"></th>
+            <th width="30">#</th>
+            <th>Data</th>
+            <th>Kg</th>
+          </tr>
+        </thead>
+        <tbody id="modalSaidaBody"></tbody>
+      </table>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:10px;">
+      <button class="btn-modal btn-confirmar" onclick="confirmarSaida()">Confirmar</button>
+      <button class="btn-modal btn-cancelar" onclick="cancelarSaida()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL BOBINA ZEROU ================= -->
+<div id="modalZerou" class="modal-overlay hidden">
+  <div class="modal-opcoes-content">
+    <h3>Bobina zerada</h3>
+    <p id="modalZerouTexto">O que fazer com esta bobina?</p>
+    <button class="btn-opcao btn-consumir-opcao" onclick="zerouConsumir()">✔️ Marcar como consumida</button>
+    <button class="btn-opcao btn-excluir-opcao" onclick="zerouExcluir()">🗑️ Excluir</button>
+  </div>
+</div>
+
+<!-- ================= MODAL AÇÕES HISTÓRICO ================= -->
+<div id="modalHistoricoAcoes" class="modal-overlay hidden">
+  <div class="modal-opcoes-content">
+    <h3 id="modalHistoricoTitulo">Ações do registro</h3>
+    <button id="btnHistoricoQR" class="btn-opcao btn-editar-opcao" onclick="abrirQRDoHistorico()">📱 Ver QR da bobina</button>
+    <button class="btn-opcao btn-excluir-opcao" onclick="confirmarRemoverHistoricoSelecionado()">🗑 Remover registro</button>
+    <button class="btn-opcao btn-cancelar-opcao" onclick="fecharModalHistoricoAcoes()">Cancelar</button>
+  </div>
+</div>
+
+<!-- ================= MODAL SCANNER QR ================= -->
+<div id="modalScannerQR" class="modal-overlay hidden">
+  <div class="modal-saida-content">
+    <div class="modal-saida-header">
+      <h3>Escanear QR</h3>
+      <button class="config-fechar" onclick="fecharScannerQR()">✕</button>
+    </div>
+    <div id="reader" style="width:100%; min-height:260px;"></div>
+    <div id="scannerStatus" style="font-size:13px; color:#64748b; text-align:center;">
+      Aponte a câmera para o QR da bobina
+    </div>
+    <div style="display:flex; gap:10px; margin-top:10px;">
+      <button class="btn-modal btn-cancelar" onclick="fecharScannerQR()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL RESULTADO QR ================= -->
+<div id="modalResultadoQR" class="modal-overlay hidden">
+  <div class="modal-opcoes-content">
+    <h3>Bobina escaneada</h3>
+    <div id="resultadoQRConteudo" style="font-size:13px; line-height:1.6;"></div>
+    <button id="btnUsarQRMov" class="btn-opcao btn-editar-opcao" onclick="usarQRNaMovimentacao()" style="display:none;">📥 Usar na movimentação</button>
+    <button id="btnEntradaRapidaQR" class="btn-opcao btn-consumir-opcao" onclick="entradaRapidaQR()" style="display:none;">⚡ Entrada rápida</button>
+    <button id="btnConsumirQR" class="btn-opcao btn-consumir-opcao" onclick="consumirBobinaQR()" style="display:none;">✔️ Marcar como consumida</button>
+    <button id="btnDesmarcarQR" class="btn-opcao btn-editar-opcao" onclick="desmarcarConsumidaQR()" style="display:none;">↩ Desmarcar consumida</button>
+    <button id="btnExcluirQR" class="btn-opcao btn-excluir-opcao" onclick="excluirBobinaQR()" style="display:none;">🗑️ Excluir bobina</button>
+    <button class="btn-opcao btn-cancelar-opcao" onclick="fecharResultadoQR()">Fechar</button>
+  </div>
+</div>
+
+<!-- ================= MODAL SCANNER CONTÍNUO ================= -->
+<div id="modalScannerContinuo" class="modal-overlay hidden">
+  <div class="modal-saida-content">
+    <div class="modal-saida-header">
+      <h3>Leitura contínua</h3>
+      <button class="config-fechar" onclick="fecharScannerContinuo()">✕</button>
+    </div>
+    <div id="readerContinuo" style="width:100%; min-height:260px;"></div>
+    <div id="continuoContador" style="text-align:center; font-size:16px; font-weight:700; color:#16a34a; margin:8px 0;">
+      0 bobinas adicionadas
+    </div>
+    <div id="continuoLog" style="max-height:120px; overflow-y:auto; font-size:11px; color:#64748b; border:1px solid #e2e8f0; border-radius:8px; padding:6px;"></div>
+    <div style="display:flex; gap:10px; margin-top:10px;">
+      <button class="btn-modal btn-cancelar" onclick="fecharScannerContinuo()">Finalizar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL PREVIEW ETIQUETA ================= -->
+<div id="modalPreviewEtiqueta" class="modal-overlay hidden">
+  <div class="modal-saida-content" style="max-width:450px;">
+    <div class="modal-saida-header">
+      <h3 id="previewTitulo">Preview da etiqueta</h3>
+      <button class="config-fechar" onclick="fecharPreviewEtiqueta()">✕</button>
+    </div>
+    <div class="preview-etiqueta-container">
+      <div class="preview-etiqueta-nav">
+        <button onclick="previewPaginaAnterior()">◀</button>
+        <span class="preview-etiqueta-pagina" id="previewPagina">1 / 1</span>
+        <button onclick="previewProximaPagina()">▶</button>
+      </div>
+      <div class="preview-canvas-wrapper">
+        <canvas id="previewCanvas" width="610" height="406"></canvas>
+      </div>
+      <div class="preview-info" id="previewInfo">100 × 60 mm — 8 QR por etiqueta</div>
+    </div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+      <button class="btn-modal btn-confirmar" onclick="confirmarExportZPL()">📥 Baixar (.zpl)</button>
+      <button class="btn-modal btn-main" onclick="copiarZPLDoPreview()">📋 Copiar (.zpl)</button>
+    </div>
+    <button class="btn-opcao btn-cancelar-opcao" style="margin-top:6px;" onclick="fecharPreviewEtiqueta()">Fechar</button>
+  </div>
+</div>
+
+<!-- ================= MODAL QR INDIVIDUAL ================= -->
+<div id="modalQR" class="modal-overlay hidden">
+  <div class="modal-opcoes-content">
+    <h3>QR da bobina</h3>
+    <div id="qrContainer" style="display:flex; flex-direction:column; align-items:center;"></div>
+    <button class="btn-opcao btn-cancelar-opcao" onclick="fecharModalQR()">Fechar</button>
+  </div>
+</div>
+
+<!-- ================= MODAL CONFIGURAÇÕES ================= -->
+<div id="modalConfig" class="modal-overlay hidden">
+  <div class="modal-content" style="padding: 16px;">
+    <div class="config-header">
+      <h3 id="configTitulo">Configurações</h3>
+      <button class="config-fechar" onclick="fecharModalConfig()">✕</button>
+    </div>
+
+    <!-- MENU PRINCIPAL -->
+    <div id="configMenuPrincipal">
+      <button class="btn-opcao btn-editar-opcao" onclick="abrirConfigExportar()">📥 Exportar dados</button>
+      <button class="btn-opcao btn-editar-opcao" onclick="abrirConfigBackup()">💾 Backup / Restaurar</button>
+      <button class="btn-opcao btn-editar-opcao" onclick="abrirConfigCadastro()">🗂️ Gerenciar cadastro</button>
+      <button class="btn-opcao btn-editar-opcao" id="btnPendentesConfig" onclick="abrirModalGerador()">
+        🏷️ Gerar etiquetas
+        <span id="btnPendentesContador" class="pendentes-badge" style="display:none;"></span>
+      </button>
+      <button class="btn-opcao btn-editar-opcao" onclick="abrirConfigDataProducao()">📅 Data de produção</button>
+              <button class="btn-opcao btn-editar-opcao" onclick="abrirInicioConferencia()">📋 Conferência</button>
+      <div class="btn-opcao dark-switch-row" onclick="alternarModoEscuro()">
+        <div class="dark-switch-label">
+          <span id="darkModeIcon">🌙</span>
+          Modo escuro
+        </div>
+        <label class="switch" onclick="event.stopPropagation()">
+          <input type="checkbox" id="darkModeToggle" onchange="alternarModoEscuro()">
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+      <button class="btn-opcao btn-cancelar-opcao" onclick="fecharModalConfig()">Fechar</button>
+    </div>
+
+    <!-- SUBTELA EXPORTAR -->
+    <div id="configTelaExportar" class="hidden">
+      <div class="export-etapa">
+        <div class="export-etapa-titulo">
+          <span class="etapa-num">1</span> O que exportar?
+        </div>
+        <div class="export-grid" id="exportGrid">
+          <div class="export-card selecionado" data-tipo="estoque" onclick="selecionarTipoExport(this)">
+            <span class="export-icon">📊</span>
+            <span class="export-titulo">Estoque</span>
+            <span class="export-desc">Itens atuais</span>
+          </div>
+          <div class="export-card" data-tipo="historico" onclick="selecionarTipoExport(this)">
+            <span class="export-icon">📋</span>
+            <span class="export-titulo">Histórico</span>
+            <span class="export-desc">Movimentações</span>
+          </div>
+          <div class="export-card" data-tipo="ambos" onclick="selecionarTipoExport(this)">
+            <span class="export-icon">📊📋</span>
+            <span class="export-titulo">Ambos</span>
+            <span class="export-desc">Estoque + Histórico</span>
+          </div>
+          <div class="export-card" data-tipo="qrcodes" onclick="selecionarTipoExport(this)">
+            <span class="export-icon">📱</span>
+            <span class="export-titulo">QR Codes</span>
+            <span class="export-desc">Etiquetas das bobinas</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="export-etapa" id="exportEtapaFormato">
+        <div class="export-etapa-titulo">
+          <span class="etapa-num">2</span> Formato
+        </div>
+
+        <div class="export-formatos" id="exportFormatosNormal">
+          <button class="export-formato-btn selecionado" data-formato="excel" onclick="selecionarFormato(this)">📗 Excel</button>
+          <button class="export-formato-btn" data-formato="pdf" onclick="selecionarFormato(this)">📄 PDF</button>
+        </div>
+
+        <div class="export-formatos hidden" id="exportFormatosQR">
+          <button class="export-formato-btn selecionado" data-formato="zpl" onclick="selecionarFormato(this)">🦓 Zebra (.zpl)</button>
+          <button class="export-formato-btn" data-formato="imagens" onclick="selecionarFormato(this)">🖼️ Imagens</button>
+          <button class="export-formato-btn" data-formato="csv" onclick="selecionarFormato(this)">📊 CSV</button>
+        </div>
+      </div>
+
+      <div class="export-etapa hidden" id="exportEtapaPeriodo">
+        <div class="export-etapa-titulo">
+          <span class="etapa-num">3</span> Período
+        </div>
+        <div class="export-periodo-toggle">
+          <button class="selecionado" onclick="toggleExportPeriodo(false, this)">Tudo</button>
+          <button onclick="toggleExportPeriodo(true, this)">Por período</button>
+        </div>
+        <div class="export-periodo-row hidden" id="exportPeriodoDatas">
+          <input type="date" id="exportDataInicio" placeholder="Início">
+          <span style="color:#94a3b8;">até</span>
+          <input type="date" id="exportDataFim" placeholder="Fim">
+        </div>
+      </div>
+
+      <button type="button" class="btn-modal btn-confirmar" style="margin-top:8px;" onclick="executarExportacaoNova()">📥 Exportar</button>
+      <button class="btn-opcao btn-cancelar-opcao" onclick="voltarConfigPrincipal()">← Voltar</button>
+    </div>
+
+    <!-- SUBTELA BACKUP -->
+    <div id="configTelaBackup" class="hidden">
+      <button type="button" class="btn-modal btn-confirmar" onclick="exportarBackup()">📥 Exportar (.json)</button>
+      <button type="button" class="btn-modal btn-importar" onclick="importarBackup()">📂 Restaurar</button>
+      <button class="btn-opcao btn-restaurar-local" onclick="restaurarUltimoBackup()">↩ Restaurar último</button>
+      <input type="file" id="inputBackup" accept=".json" style="display:none" onchange="processarBackup(event)">
+      <button class="btn-opcao btn-cancelar-opcao" onclick="voltarConfigPrincipal()">← Voltar</button>
+    </div>
+
+    <!-- SUBTELA CADASTRO -->
+    <div id="configTelaCadastro" class="hidden">
+      <div id="cadastroAcordeao" class="cadastro-acordeao"></div>
+      <button class="btn-opcao btn-cancelar-opcao" onclick="voltarConfigPrincipal()">← Voltar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL CONFIG DATA PRODUÇÃO ================= -->
+<!-- Para remover/editar: busque por "MODAL CONFIG DATA PRODUÇÃO" -->
+<div id="modalConfigDataProducao" class="modal-overlay hidden" onclick="if(event.target===this) fecharConfigDataProducao()">
+  <div class="modal-opcoes-content" style="min-width:280px;">
+    <h3>Data de produção</h3>
+    <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Como a data será registrada nas etiquetas:</p>
+
+    <button class="btn-opcao btn-editar-opcao" style="text-align:left;" onclick="document.querySelector('input[name=opcaoData][value=geracao]').checked=true; salvarOpcaoData('geracao');">
+      <label style="pointer-events:none; display:flex; align-items:center; gap:8px; margin:0;">
+        <input type="radio" name="opcaoData" value="geracao" style="flex-shrink:0;">
+        <span>📅 Data da geração<br><small style="color:#64748b;">Registra quando você clica em Concluir</small></span>
+      </label>
+    </button>
+
+    <button class="btn-opcao btn-editar-opcao" style="text-align:left;" onclick="document.querySelector('input[name=opcaoData][value=entrada]').checked=true; salvarOpcaoData('entrada');">
+      <label style="pointer-events:none; display:flex; align-items:center; gap:8px; margin:0;">
+        <input type="radio" name="opcaoData" value="entrada" style="flex-shrink:0;">
+        <span>📥 Data da entrada<br><small style="color:#64748b;">Registra quando escaneia para dar entrada</small></span>
+      </label>
+    </button>
+
+    <button class="btn-opcao btn-editar-opcao" style="text-align:left;" onclick="document.querySelector('input[name=opcaoData][value=manual]').checked=true; salvarOpcaoData('manual');">
+      <label style="pointer-events:none; display:flex; align-items:center; gap:8px; margin:0;">
+        <input type="radio" name="opcaoData" value="manual" style="flex-shrink:0;">
+        <span>✏️ Escolher manualmente<br><small style="color:#64748b;">Campo de data aparece no gerador</small></span>
+      </label>
+    </button>
+
+    <button class="btn-opcao btn-cancelar-opcao" onclick="fecharConfigDataProducao()">Fechar</button>
+  </div>
+</div>
+
+<!-- ================= MODAL USUÁRIO CONFERÊNCIA ================= -->
+<div class="modal-overlay hidden" id="modalInicioConferencia">
+  <div class="modal-opcoes-content" style="max-width:300px;width:90vw;gap:12px;">
+
+    <h3 style="margin:0;text-align:center;font-size:16px;">📋 Iniciar Conferência</h3>
+
+    <!-- Nome do usuário -->
+    <div id="confNomeContainer">
+      <label style="font-size:13px;color:#475569;font-weight:600;margin-bottom:4px;display:block;">
+        Seu nome neste dispositivo:
+      </label>
+      <div style="display:flex;gap:6px;">
+        <input id="confNomeInput" type="text" placeholder="Ex: João"
+               style="flex:1;margin:0;padding:8px 10px;font-size:14px;border-radius:8px;"
+               maxlength="20">
+        <button onclick="salvarNomeConferencia()"
+                style="width:auto;padding:0 14px;background:#1e3a8a;border-radius:8px;font-size:13px;margin:0;">
+          ✓
+        </button>
+      </div>
+      <div id="confNomeSalvo" style="font-size:12px;color:#16a34a;margin-top:4px;display:none;">
+        ✅ Nome salvo!
+      </div>
+    </div>
+
+    <!-- Quantos usuários -->
+    <div>
+      <label style="font-size:13px;color:#475569;font-weight:600;margin-bottom:6px;display:block;">
+        Quantos usuários vão conferir?
+      </label>
+      <div style="display:flex;gap:8px;">
+        <button onclick="selecionarModoConferencia(1)"
+                id="confBtn1usuario"
+                class="btn-opcao btn-editar-opcao"
+                style="flex:1;text-align:center;padding:10px;">
+          👤 Só eu
+        </button>
+        <button onclick="selecionarModoConferencia(2)"
+                id="confBtn2usuarios"
+                class="btn-opcao btn-editar-opcao"
+                style="flex:1;text-align:center;padding:10px;">
+          👥 Dois
+        </button>
+      </div>
+    </div>
+
+    <button class="btn-opcao btn-cancelar-opcao"
+            style="text-align:center;"
+            onclick="fecharInicioConferencia()">
+      Cancelar
+    </button>
+
+  </div>
+</div>
+
+
+<!-- ================= MODAL CONFERÊNCIA ================= -->
+<div id="modalConferencia" class="modal-overlay hidden">
+  <div class="modal-gerador-content">
+
+    <!-- TELA 1 — INICIAR -->
+    <div id="confTelaIniciar">
+      <div class="modal-saida-header">
+        <h3>📋 Conferência de Inventário</h3>
+        <button class="config-fechar" onclick="fecharConferencia()">✕</button>
+      </div>
+
+<div style="padding:8px 0;">
+  <p style="font-size:13px; color:#64748b; margin:0 0 10px;">O que deseja conferir?</p>
+
+  <label style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:8px; margin-bottom:5px; cursor:pointer; font-size:14px;">
+    <input type="radio" name="confTipo" value="tudo" checked style="width:20px; height:20px; margin:0;">
+    Tudo
+  </label>
+  <label style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:8px; margin-bottom:5px; cursor:pointer; font-size:14px;">
+    <input type="radio" name="confTipo" value="brf" style="width:20px; height:20px; margin:0;">
+    BRF
+  </label>
+  <label style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:8px; margin-bottom:5px; cursor:pointer; font-size:14px;">
+    <input type="radio" name="confTipo" value="tampas" style="width:20px; height:20px; margin:0;">
+    Tampas
+  </label>
+<label style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:8px; margin-bottom:5px; cursor:pointer; font-size:14px;">
+  <input type="radio" name="confTipo" value="fundo" style="width:20px; height:20px; margin:0;">
+  Fundo
+</label>
+  <label style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:8px; margin-bottom:5px; cursor:pointer; font-size:14px;">
+    <input type="radio" name="confTipo" value="laminacao" style="width:20px; height:20px; margin:0;">
+    1ª Laminação
+  </label>
+</div>
+
+<button class="btn-confirmar" onclick="iniciarConferencia()" style="margin-top:6px; padding:10px;">▶ Iniciar conferência</button>
+    </div>
+
+    <!-- TELA 2 — EM ANDAMENTO -->
+    <div id="confTelaAndamento" class="hidden" style="display:flex; flex-direction:column; flex:1; min-height:0; gap:6px;">
+      <div class="modal-saida-header">
+        <h3>📋 Conferência</h3>
+        <button class="config-fechar" onclick="pausarConferencia()">✕</button>
+      </div>
+
+      <!-- Progresso -->
+      <div style="text-align:center; padding:4px 0;">
+        <span id="confProgresso" style="font-size:14px; font-weight:700; color:#1e3a8a;">0/0 (0%)</span>
+        <div class="barra" style="margin-top:4px;">
+          <div id="confBarra" class="barra-preenchimento" style="background:#1e3a8a; width:0%;"></div>
+        </div>
+      </div>
+
+      <!-- Scanner -->
+      <div class="qr-actions-row">
+        <button class="btn-scan-qr btn-scan-compact" onclick="confScannerQR()">📷 Câmera</button>
+        <button class="btn-scan-continuo btn-scan-compact" onclick="confAbrirColetor()">📟 Coletor</button>
+      </div>
+
+      <!-- Busca manual -->
+      <div class="input-row">
+        <input id="confBusca" placeholder="Buscar bobina" oninput="confFiltrarLista()">
+        <button class="btn-clear" onclick="document.getElementById('confBusca').value=''; confFiltrarLista();">X</button>
+      </div>
+
+      <!-- Lista -->
+      <div id="confLista" style="flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:4px; -webkit-overflow-scrolling:touch;"></div>
+
+      <!-- Botões -->
+      <div style="display:flex; gap:8px; padding-top:6px; border-top:1px solid #e2e8f0;">
+        <button class="btn-cancelar" onclick="pausarConferencia()" style="flex:1;">⏸ Pausar</button>
+        <button class="btn-confirmar" onclick="confFinalizarColaborativo()" style="flex:1;">✅ Finalizar</button>
+      </div>
+    </div>
+
+    <!-- TELA 3 — RESULTADO -->
+    <div id="confTelaResultado" class="hidden" style="display:flex; flex-direction:column; flex:1; min-height:0; gap:6px;">
+      <div class="modal-saida-header">
+        <h3>📊 Resultado</h3>
+        <button class="config-fechar" onclick="fecharConferencia()">✕</button>
+      </div>
+
+      <!-- Resumo -->
+      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; padding:4px 0;">
+        <div style="text-align:center; padding:8px; background:#f0fdf4; border-radius:8px;">
+          <div style="font-size:11px; color:#16a34a;">Conferidas</div>
+          <strong id="confResConferidas" style="font-size:18px; color:#16a34a;">0</strong>
+        </div>
+        <div style="text-align:center; padding:8px; background:#fef2f2; border-radius:8px;">
+          <div style="font-size:11px; color:#dc2626;">Não encontradas</div>
+          <strong id="confResNaoEncontradas" style="font-size:18px; color:#dc2626;">0</strong>
+        </div>
+        <div style="text-align:center; padding:8px; background:#fefce8; border-radius:8px;">
+          <div style="font-size:11px; color:#ca8a04;">Extras</div>
+          <strong id="confResExtras" style="font-size:18px; color:#ca8a04;">0</strong>
+        </div>
+      </div>
+
+      <!-- Lista resultado -->
+      <div id="confListaResultado" style="flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:4px; -webkit-overflow-scrolling:touch;"></div>
+
+      <!-- Botões -->
+<div style="display:flex; flex-direction:column; gap:6px; padding-top:6px; border-top:1px solid #e2e8f0;">
+
+  <!-- Aparece quando está aguardando o outro usuário -->
+  <div id="confAguardandoContainer" style="display:none; text-align:center; padding:10px; background:#eff6ff; border-radius:8px;">
+    <div style="font-size:13px; font-weight:600; color:#1e3a8a;">⏳ Aguardando o outro usuário finalizar...</div>
+    <div id="confAguardandoNome" style="font-size:12px; color:#64748b; margin-top:4px;"></div>
+  </div>
+
+  <!-- Aparece quando os dois finalizaram -->
+  <button id="btnJuntarConferencias" class="btn-confirmar"
+          style="display:none; background:#1e3a8a;"
+          onclick="juntarConferencias()">
+    🔗 Juntar conferências
+  </button>
+
+  <button class="btn-main" onclick="confExportarResultado()">📊 Exportar relatório</button>
+  <button class="btn-confirmar" onclick="confAjustarEstoque()">🔧 Ajustar estoque</button>
+  <button class="btn-cancelar" onclick="fecharConferencia()">✕ Fechar</button>
+</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= MODAL SCANNER CONFERÊNCIA ================= -->
+<div id="modalScannerConf" class="modal-overlay hidden">
+  <div class="modal-saida-content" style="background:#ffffff; max-width:440px; width:92vw; display:flex; flex-direction:column; max-height:85vh;">
+    <div class="modal-saida-header">
+      <h3 id="confScannerTitulo">Coletor de Dados</h3>
+      <button class="config-fechar" onclick="confFecharScanner()">✕</button>
+    </div>
+    <div id="readerConf" style="width:100%; min-height:260px;"></div>
+    
+    <!-- Coletor Log Container (substitui a câmera e o quadrado grande) -->
+    <div id="coletorDisplayContainer" class="hidden" style="flex:1; display:flex; flex-direction:column; min-height:0; gap:8px; padding:4px 0;">
+      <div style="font-size:13px; font-weight:600; color:#475569; display:flex; justify-content:space-between; align-items:center;">
+        <span>Leitura do Coletor:</span>
+        <span id="confScannerStatus" style="font-size:13px; font-weight:700; color:#16a34a;">0 conferida(s)</span>
+      </div>
+      <input type="text" id="inputColetorVisivel" placeholder="Aguardando leitura do coletor..." style="width:100%; padding:12px; font-size:15px; border:2px solid #2563eb; border-radius:8px; text-align:center; background:#ffffff; color:#0f172a; outline:none;" autocomplete="off">
+      <div style="font-size:11px; color:#64748b; text-align:center;">
+        💡 O código lido pelo coletor aparecerá acima e será processado automaticamente
+      </div>
+      <div style="font-size:13px; font-weight:600; color:#475569; margin-top:2px;">Histórico de leituras:</div>
+      <div id="confScannerLog" style="flex:1; min-height:140px; overflow-y:auto; font-size:13px; color:#1e293b; border:1px solid #cbd5e1; border-radius:8px; padding:8px; background:#f8fafc;"></div>
+    </div>
+
+    <button class="btn-modal btn-cancelar" onclick="confFecharScanner()" style="margin-top:10px;">Finalizar</button>
+  </div>
+</div>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBKzR0Tsq5yPdLmjKBODtGlUt8f9xflNYQ",
+    authDomain: "estoque-inpla.firebaseapp.com",
+    projectId: "estoque-inpla",
+    storageBucket: "estoque-inpla.firebasestorage.app",
+    messagingSenderId: "488545123729",
+    appId: "1:488545123729:web:f6c7bb84c387a341bdae30"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  // Modo de armazenamento
+  let usarFirebase = localStorage.getItem('usarFirebase') !== 'false';
+
+  // Salva no Firebase automaticamente
+  window.salvarNoFirebase = async function() {
+    if (!usarFirebase) return;
+
+    try {
+await db.collection("estoque").doc("dados").set({
+  estoque: JSON.stringify(estoque),
+  historico: JSON.stringify(historico),
+  banco: JSON.stringify(banco),
+  etiquetasPendentes: JSON.stringify(etiquetasPendentes),
+  opcaoDataProducao: opcaoDataProducao,
+  ultimaAtualizacao: new Date().toISOString()
+});
+    } catch (e) {
+      console.error("Erro ao salvar no Firebase:", e);
+    }
+  };
+
+  // Escuta mudanças em tempo real
+window.escutarFirebase = function() {
+  if (!usarFirebase) return;
+
+  db.collection("estoque").doc("dados").onSnapshot(function(docSnap) {
+    if (!usarFirebase) return;
+
+    if (docSnap.exists) {
+      let dados = docSnap.data();
+      let novoEstoque = JSON.parse(dados.estoque || '{}');
+      let novoHistorico = JSON.parse(dados.historico || '[]');
+      let novoBanco = JSON.parse(dados.banco || '{}');
+      let novasPendentes = JSON.parse(dados.etiquetasPendentes || '[]');
+let novaOpcaoData = dados.opcaoDataProducao || 'geracao';
+
+      let estoqueAtual = JSON.stringify(estoque);
+      let historicoAtual = JSON.stringify(historico);
+      let pendentesAtual = JSON.stringify(etiquetasPendentes);
+let opcaoDataAtual = opcaoDataProducao;
+
+     if (JSON.stringify(novoEstoque) !== estoqueAtual ||
+    JSON.stringify(novoHistorico) !== historicoAtual ||
+    JSON.stringify(novasPendentes) !== pendentesAtual ||
+    novaOpcaoData !== opcaoDataAtual) {
+        
+        estoque = novoEstoque;
+        historico = novoHistorico;
+        banco = novoBanco;
+        etiquetasPendentes = novasPendentes;
+opcaoDataProducao = novaOpcaoData;
+
+localStorage.setItem("estoque", JSON.stringify(estoque));
+localStorage.setItem("historico", JSON.stringify(historico));
+localStorage.setItem("bancoCustom", JSON.stringify(banco));
+localStorage.setItem("etiquetasPendentes", JSON.stringify(etiquetasPendentes));
+localStorage.setItem("opcaoDataProducao", opcaoDataProducao);
+
+atualizarCampoDataManualGerador();
+        
+        atualizarTudo();
+        atualizarBotaoPendentesConfig();
+        console.log("Dados sincronizados do Firebase");
+      }
+    }
+  });
+};
+
+
+</script>
+<script src="script.js?v=2005"></script>
+
+<!-- ================= MODAL CONFIRMAR SINCRONIZAR ================= -->
+<div class="modal-overlay hidden" id="modalConfirmarSync">
+  <div class="modal-opcoes-content" style="max-width:300px;width:90vw;">
+
+    <h3 style="margin:0 0 6px;font-size:16px;text-align:center;">☁️ Baixar da nuvem</h3>
+
+    <p style="font-size:13px;color:#475569;text-align:center;margin:0 0 10px;line-height:1.4;">
+      Isso vai substituir os dados locais pelos dados salvos na nuvem.<br>
+      Alterações não salvas serão perdidas.
+    </p>
+
+    <div id="syncDataSalva"
+         style="text-align:center;font-size:12px;font-weight:700;
+                color:#1e3a8a;background:#eff6ff;
+                border-radius:8px;padding:8px 12px;margin-bottom:14px;">
+      Último save: --/-- --:--
+    </div>
+
+    <button class="btn-opcao btn-confirmar"
+            style="width:100%;margin-bottom:6px;text-align:center;"
+            onclick="executarSincronizar()">
+      ✅ Confirmar download
+    </button>
+
+    <button class="btn-opcao btn-cancelar-opcao"
+            style="width:100%;text-align:center;"
+            onclick="fecharModalSync()">
+      Cancelar
+    </button>
+
+  </div>
+</div>
+
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1c9d4a3ac8226ed',t:'MTc4NDI5NzQzMQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
