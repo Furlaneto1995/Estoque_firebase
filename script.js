@@ -3450,7 +3450,7 @@ async function fecharScannerContinuo() {
 function coletarBobinasParaQR(dataInicioP, dataFimP) {
   let bobinas = [];
   historico.forEach((h, index) => {
-    if (h.tipo !== "Entrada" || h._removidaEstoque) return;
+    if (h.tipo !== "Entrada" || h._removidaEstoque || h.consumida) return;
     if (dataInicioP || dataFimP) {
       let dataISO = h.data.split(",")[0].trim().split("/").reverse().join("-");
       if (dataInicioP && dataISO < dataInicioP) return;
@@ -4866,32 +4866,38 @@ function confRemoverExtra(idx) {
 /* ================= CONFERÊNCIA — PROCESSAR LEITURA (CORRIGIDO) ================= */
 
 function confProcessarLeitura(textoLido) {
+  let texto = String(textoLido || '').trim();
+  if (!texto) return 'erro';
+
   let dados = null;
-  try { dados = JSON.parse(textoLido); } catch (e) { dados = interpretarQRSimplificado(textoLido); }
-  if (!dados) return 'erro';
+  try { dados = JSON.parse(texto); } catch (e) { dados = interpretarQRSimplificado(texto); }
 
   let encontrada = null;
-  let idCurtoLido = dados.bobinaId || '';
-
-  // Se não extraiu bobinaId do parser, tenta extrair direto do texto
+  let idCurtoLido = '';
+  if (dados) {
+    idCurtoLido = dados.bobinaId || '';
+  }
   if (!idCurtoLido) {
-    idCurtoLido = extrairIdCurtoBobina(textoLido);
+    idCurtoLido = extrairIdCurtoBobina(texto);
   }
 
-  // 1) PRIORIDADE: busca pelo ID curto único
-  if (idCurtoLido) {
+  // 1) Busca direta por ID curto ou ID completo em fotoEstoque
+  if (idCurtoLido || texto) {
     encontrada = conferencia.fotoEstoque.find(function(bob) {
       let idCurtoBob = extrairIdCurtoBobina(bob.id);
-      return idCurtoBob === idCurtoLido;
+      return (idCurtoLido && idCurtoBob === idCurtoLido) || 
+             bob.id === texto || 
+             (bob.idCurto && bob.idCurto === texto) ||
+             (idCurtoBob === texto.toLowerCase());
     }) || null;
   }
 
-  // 2) FALLBACK para etiquetas antigas sem ID — pega a primeira NÃO conferida
-  if (!encontrada && !idCurtoLido) {
+  // 2) Fallback por item, versão e peso (se dados parseados)
+  if (!encontrada && dados && dados.item && dados.versao) {
     let candidatos = conferencia.fotoEstoque.filter(function(bob) {
       return String(bob.item) === String(dados.item) &&
         String(bob.versao) === String(dados.versao) &&
-        Math.round(Number(bob.peso)) === Math.round(Number(dados.peso));
+        (dados.peso ? Math.round(Number(bob.peso)) === Math.round(Number(dados.peso)) : true);
     });
     encontrada = candidatos.find(function(bob) {
       return !conferencia.conferidas.includes(bob.id);
@@ -4905,13 +4911,17 @@ function confProcessarLeitura(textoLido) {
     return 'conferida';
   }
 
-  // Extra
-  let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
-  let tamanho = (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)])
-    ? banco[tipo][dados.item][String(dados.versao)].tamanho : '';
-  conferencia.extras.push({ item: dados.item, versao: String(dados.versao), peso: dados.peso, tamanho, tipo });
-  confSalvar(); confRenderizarLista();
-  return 'extra';
+  // Se tem dados válidos mas não está no estoque -> Extra
+  if (dados && dados.item && dados.versao) {
+    let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
+    let tamanho = (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)])
+      ? banco[tipo][dados.item][String(dados.versao)].tamanho : '';
+    conferencia.extras.push({ item: dados.item, versao: String(dados.versao), peso: dados.peso || 0, tamanho, tipo });
+    confSalvar(); confRenderizarLista();
+    return 'extra';
+  }
+
+  return 'erro';
 }
 
 async function confScannerQR() {
@@ -4978,7 +4988,8 @@ function confLogScanner(resultado, texto) {
   div.style.borderBottom = '1px solid #f1f5f9';
   let dados = null;
   try { dados = JSON.parse(texto); } catch (e) { dados = interpretarQRSimplificado(texto); }
-  let nome = dados ? (dados.item + ' V' + dados.versao) : texto.substring(0, 25);
+  let nome = dados ? (dados.item + ' V' + dados.versao) : texto;
+
   if (resultado === 'conferida') {
     div.style.color = '#16a34a';
     div.textContent = '✅ ' + agora + ' — ' + nome + ' conferida';
@@ -4993,7 +5004,7 @@ function confLogScanner(resultado, texto) {
     if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
   } else {
     div.style.color = '#dc2626';
-    div.textContent = '❌ ' + agora + ' — Código inválido';
+    div.textContent = '❌ ' + agora + ' — Não encontrado / Lida: "' + texto + '"';
     if (navigator.vibrate) navigator.vibrate([500]);
   }
   if (log.firstChild) log.insertBefore(div, log.firstChild);
