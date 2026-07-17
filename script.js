@@ -1,3 +1,26 @@
+
+let coletorInterval = null;
+
+function iniciarMonitoramentoColetor() {
+  if (coletorInterval) clearInterval(coletorInterval);
+  coletorInterval = setInterval(async () => {
+    let modal = document.getElementById('modalScannerConf');
+    if (!modal || modal.classList.contains('hidden') || !conferencia.coletorMode) return;
+
+    let inp = document.getElementById('inputColetorVisivel');
+    if (!inp) return;
+
+    let val = inp.value.trim();
+    if (val) {
+      let codigo = val.replace(/[\r\n]+/g, '').trim();
+      inp.value = '';
+      if (codigo.length >= 2) {
+        let resultado = await confProcessarLeitura(codigo);
+        confLogScanner(resultado, codigo);
+      }
+    }
+  }, 150);
+}
 /* ================= TOAST ================= */
 
 function mostrarToast(texto = 'Concluído', tipo = 'sucesso'){
@@ -4979,6 +5002,8 @@ async function confAbrirColetor() {
 
   document.getElementById('modalScannerConf').classList.remove('hidden');
 
+  iniciarMonitoramentoColetor();
+
   setTimeout(() => {
     let inp = document.getElementById('inputColetorVisivel');
     if (inp) {
@@ -5026,6 +5051,7 @@ async function confFecharScanner() {
   try { if (conferencia.leitor) { await conferencia.leitor.stop(); await conferencia.leitor.clear(); } } catch (e) {}
   conferencia.leitor = null;
   conferencia.coletorMode = false;
+  if (coletorInterval) { clearInterval(coletorInterval); coletorInterval = null; }
   coletorBuffer = '';
   document.getElementById('modalScannerConf').classList.add('hidden');
   let readerConf = document.getElementById('readerConf');
