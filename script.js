@@ -4957,11 +4957,10 @@ async function confAbrirColetor() {
   await fecharTodosScanners();
   document.getElementById('confScannerTitulo').textContent = 'Coletor de Dados';
   let statusText = conferencia.conferidas.length + ' conferida(s)';
-  let bigStatus = document.getElementById('confColetorBigStatus');
-  if (bigStatus) bigStatus.textContent = statusText;
   let statusLine = document.getElementById('confScannerStatus');
   if (statusLine) statusLine.textContent = statusText;
   document.getElementById('confScannerLog').innerHTML = '';
+  coletorBuffer = '';
   
   let readerConf = document.getElementById('readerConf');
   if (readerConf) readerConf.classList.add('hidden');
@@ -4969,63 +4968,46 @@ async function confAbrirColetor() {
   if (coletorContainer) coletorContainer.classList.remove('hidden');
 
   document.getElementById('modalScannerConf').classList.remove('hidden');
-
-  setTimeout(() => {
-    let inp = document.getElementById('inputColetor');
-    if (inp) {
-      inp.value = '';
-      inp.focus();
-    }
-  }, 100);
 }
 
 function confLogScanner(resultado, texto) {
   let log = document.getElementById('confScannerLog');
   let agora = new Date().toLocaleTimeString();
   let div = document.createElement('div');
-  div.style.padding = '3px 0';
+  div.style.padding = '4px 0';
   div.style.borderBottom = '1px solid #f1f5f9';
   let dados = null;
   try { dados = JSON.parse(texto); } catch (e) { dados = interpretarQRSimplificado(texto); }
-  let nome = dados ? (dados.item + ' V' + dados.versao) : texto.substring(0, 20);
+  let nome = dados ? (dados.item + ' V' + dados.versao) : texto.substring(0, 25);
   if (resultado === 'conferida') {
-  div.style.color = '#16a34a';
-  div.textContent = '✅ ' + agora + ' — ' + nome + ' conferida';
-  if (navigator.vibrate) navigator.vibrate([80]);
-  // 1 vibração curta = sucesso
-}
-else if (resultado === 'duplicada') {
-  div.style.color = '#ca8a04';
-  div.textContent = '⏭️ ' + agora + ' — ' + nome + ' já conferida';
-  if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 60]);
-  // 3 pulsos rápidos = já lida
-}
-else if (resultado === 'extra') {
-  div.style.color = '#ea580c';
-  div.textContent = '⚠️ ' + agora + ' — ' + nome + ' extra (não no estoque)';
-  if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
-  // 2 pulsos longos = atenção
-}
-else {
-  div.style.color = '#dc2626';
-  div.textContent = '❌ ' + agora + ' — Etiqueta/QR inválido';
-  if (navigator.vibrate) navigator.vibrate([500]);
-  // 1 vibração longa = erro
-}
+    div.style.color = '#16a34a';
+    div.textContent = '✅ ' + agora + ' — ' + nome + ' conferida';
+    if (navigator.vibrate) navigator.vibrate([80]);
+  } else if (resultado === 'duplicada') {
+    div.style.color = '#ca8a04';
+    div.textContent = '⏭️ ' + agora + ' — ' + nome + ' já conferida';
+    if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 60]);
+  } else if (resultado === 'extra') {
+    div.style.color = '#ea580c';
+    div.textContent = '⚠️ ' + agora + ' — ' + nome + ' extra (não no estoque)';
+    if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
+  } else {
+    div.style.color = '#dc2626';
+    div.textContent = '❌ ' + agora + ' — Código inválido';
+    if (navigator.vibrate) navigator.vibrate([500]);
+  }
   if (log.firstChild) log.insertBefore(div, log.firstChild);
   else log.appendChild(div);
 
-  let countText = conferencia.conferidas.length + ' conferida(s)';
-  let bigStatus = document.getElementById('confColetorBigStatus');
-  if (bigStatus) bigStatus.textContent = countText;
   let statusLine = document.getElementById('confScannerStatus');
-  if (statusLine) statusLine.textContent = countText;
+  if (statusLine) statusLine.textContent = conferencia.conferidas.length + ' conferida(s)';
 }
 
 async function confFecharScanner() {
   try { if (conferencia.leitor) { await conferencia.leitor.stop(); await conferencia.leitor.clear(); } } catch (e) {}
   conferencia.leitor = null;
   conferencia.coletorMode = false;
+  coletorBuffer = '';
   document.getElementById('modalScannerConf').classList.add('hidden');
   let readerConf = document.getElementById('readerConf');
   if (readerConf) {
@@ -5034,8 +5016,6 @@ async function confFecharScanner() {
   }
   let coletorContainer = document.getElementById('coletorDisplayContainer');
   if (coletorContainer) coletorContainer.classList.add('hidden');
-  let statusLine = document.getElementById('confScannerStatus');
-  if (statusLine) statusLine.classList.remove('hidden');
 
   confRenderizarLista();
 }
@@ -5567,28 +5547,38 @@ window.confExportarResultado = confExportarResultado;
 
 document.addEventListener("DOMContentLoaded", function() {
   let inp = document.getElementById('inputColetor');
-  if (inp) {
-    inp.addEventListener('keydown', async function(e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        let texto = this.value.trim();
-        this.value = '';
-        if (!texto) return;
-        let resultado = await confProcessarLeitura(texto);
-        confLogScanner(resultado, texto);
-      }
-    });
+let coletorBuffer = '';
+let coletorTimeout = null;
+
+document.addEventListener('keydown', async function(e) {
+  let modal = document.getElementById('modalScannerConf');
+  if (!modal || modal.classList.contains('hidden') || !conferencia.coletorMode) return;
+
+  if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (coletorTimeout) clearTimeout(coletorTimeout);
+    let codigo = coletorBuffer.trim();
+    coletorBuffer = '';
+    if (codigo) {
+      let resultado = await confProcessarLeitura(codigo);
+      confLogScanner(resultado, codigo);
+    }
+    return;
   }
 
-  document.addEventListener('click', function() {
-    if (conferencia && conferencia.coletorMode) {
-      let modal = document.getElementById('modalScannerConf');
-      if (modal && !modal.classList.contains('hidden')) {
-        let inp = document.getElementById('inputColetor');
-        if (inp && document.activeElement !== inp) {
-          inp.focus();
-        }
+  if (e.key.length === 1) {
+    coletorBuffer += e.key;
+    if (coletorTimeout) clearTimeout(coletorTimeout);
+    coletorTimeout = setTimeout(async () => {
+      let codigo = coletorBuffer.trim();
+      coletorBuffer = '';
+      if (codigo.length >= 3) {
+        let resultado = await confProcessarLeitura(codigo);
+        confLogScanner(resultado, codigo);
       }
-    }
-  });
+    }, 90);
+  }
+});
 });
