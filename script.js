@@ -4915,11 +4915,22 @@ function confProcessarLeitura(textoLido) {
 }
 
 async function confScannerQR() {
+  conferencia.coletorMode = false;
   conferencia.continuoMode = false;
   document.getElementById('confScannerTitulo').textContent = 'Escanear para conferência';
   document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
   document.getElementById('confScannerLog').innerHTML = '';
-  document.getElementById('readerConf').innerHTML = '';
+  
+  let readerConf = document.getElementById('readerConf');
+  if (readerConf) {
+    readerConf.classList.remove('hidden');
+    readerConf.innerHTML = '';
+  }
+  let coletorContainer = document.getElementById('coletorDisplayContainer');
+  if (coletorContainer) coletorContainer.classList.add('hidden');
+  let statusLine = document.getElementById('confScannerStatus');
+  if (statusLine) statusLine.classList.remove('hidden');
+
   document.getElementById('modalScannerConf').classList.remove('hidden');
   try {
     await fecharTodosScanners();
@@ -4941,35 +4952,31 @@ async function confScannerQR() {
   }
 }
 
-async function confScannerContinuo() {
-  conferencia.continuoMode = true;
-  document.getElementById('confScannerTitulo').textContent = 'Leitura contínua — Conferência';
-  document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
+async function confAbrirColetor() {
+  conferencia.coletorMode = true;
+  await fecharTodosScanners();
+  document.getElementById('confScannerTitulo').textContent = 'Coletor de Dados';
+  let statusText = conferencia.conferidas.length + ' conferida(s)';
+  let bigStatus = document.getElementById('confColetorBigStatus');
+  if (bigStatus) bigStatus.textContent = statusText;
+  let statusLine = document.getElementById('confScannerStatus');
+  if (statusLine) statusLine.textContent = statusText;
   document.getElementById('confScannerLog').innerHTML = '';
-  document.getElementById('readerConf').innerHTML = '';
+  
+  let readerConf = document.getElementById('readerConf');
+  if (readerConf) readerConf.classList.add('hidden');
+  let coletorContainer = document.getElementById('coletorDisplayContainer');
+  if (coletorContainer) coletorContainer.classList.remove('hidden');
+
   document.getElementById('modalScannerConf').classList.remove('hidden');
-  let cooldown = false;
-  try {
-    await fecharTodosScanners();
-    conferencia.leitor = new Html5Qrcode('readerConf');
-    await conferencia.leitor.start(
-      { facingMode: 'environment' },
-      { fps: 15, qrbox: { width: 230, height: 230 } },
-      async (decodedText) => {
-        if (cooldown) return;
-        cooldown = true;
-        let resultado = await confProcessarLeitura(decodedText);
-        confLogScanner(resultado, decodedText);
-        document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
-        setTimeout(() => { cooldown = false; }, 900);
-      },
-      () => {}
-    );
-  } catch (e) {
-    console.error('Erro scanner contínuo conferência:', e);
-    mostrarToast('Não foi possível abrir a câmera', 'erro');
-    confFecharScanner();
-  }
+
+  setTimeout(() => {
+    let inp = document.getElementById('inputColetor');
+    if (inp) {
+      inp.value = '';
+      inp.focus();
+    }
+  }, 100);
 }
 
 function confLogScanner(resultado, texto) {
@@ -5001,19 +5008,35 @@ else if (resultado === 'extra') {
 }
 else {
   div.style.color = '#dc2626';
-  div.textContent = '❌ ' + agora + ' — QR inválido';
+  div.textContent = '❌ ' + agora + ' — Etiqueta/QR inválido';
   if (navigator.vibrate) navigator.vibrate([500]);
   // 1 vibração longa = erro
 }
   if (log.firstChild) log.insertBefore(div, log.firstChild);
   else log.appendChild(div);
+
+  let countText = conferencia.conferidas.length + ' conferida(s)';
+  let bigStatus = document.getElementById('confColetorBigStatus');
+  if (bigStatus) bigStatus.textContent = countText;
+  let statusLine = document.getElementById('confScannerStatus');
+  if (statusLine) statusLine.textContent = countText;
 }
 
 async function confFecharScanner() {
   try { if (conferencia.leitor) { await conferencia.leitor.stop(); await conferencia.leitor.clear(); } } catch (e) {}
   conferencia.leitor = null;
+  conferencia.coletorMode = false;
   document.getElementById('modalScannerConf').classList.add('hidden');
-  document.getElementById('readerConf').innerHTML = '';
+  let readerConf = document.getElementById('readerConf');
+  if (readerConf) {
+    readerConf.innerHTML = '';
+    readerConf.classList.remove('hidden');
+  }
+  let coletorContainer = document.getElementById('coletorDisplayContainer');
+  if (coletorContainer) coletorContainer.classList.add('hidden');
+  let statusLine = document.getElementById('confScannerStatus');
+  if (statusLine) statusLine.classList.remove('hidden');
+
   confRenderizarLista();
 }
 
@@ -5535,8 +5558,37 @@ window.confDesmarcar = confDesmarcar;
 window.confRemoverExtra = confRemoverExtra;
 window.confFiltrarLista = confFiltrarLista;
 window.confScannerQR = confScannerQR;
+window.confAbrirColetor = confAbrirColetor;
 window.confScannerContinuo = confScannerContinuo;
 window.confFecharScanner = confFecharScanner;
 window.finalizarConferencia = finalizarConferencia;
 window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
+
+document.addEventListener("DOMContentLoaded", function() {
+  let inp = document.getElementById('inputColetor');
+  if (inp) {
+    inp.addEventListener('keydown', async function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        let texto = this.value.trim();
+        this.value = '';
+        if (!texto) return;
+        let resultado = await confProcessarLeitura(texto);
+        confLogScanner(resultado, texto);
+      }
+    });
+  }
+
+  document.addEventListener('click', function() {
+    if (conferencia && conferencia.coletorMode) {
+      let modal = document.getElementById('modalScannerConf');
+      if (modal && !modal.classList.contains('hidden')) {
+        let inp = document.getElementById('inputColetor');
+        if (inp && document.activeElement !== inp) {
+          inp.focus();
+        }
+      }
+    }
+  });
+});
