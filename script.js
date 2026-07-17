@@ -7,8 +7,12 @@ function iniciarMonitoramentoColetor() {
     let modal = document.getElementById('modalScannerConf');
     if (!modal || modal.classList.contains('hidden') || !conferencia.coletorMode) return;
 
-    let inp = document.getElementById('inputColetorVisivel');
+    let inp = document.getElementById('inputColetorInvisivel');
     if (!inp) return;
+
+    if (document.activeElement !== inp) {
+      inp.focus();
+    }
 
     let val = inp.value.trim();
     if (val) {
@@ -19,7 +23,7 @@ function iniciarMonitoramentoColetor() {
         confLogScanner(resultado, codigo);
       }
     }
-  }, 150);
+  }, 100);
 }
 /* ================= TOAST ================= */
 
@@ -5005,22 +5009,12 @@ async function confAbrirColetor() {
   iniciarMonitoramentoColetor();
 
   setTimeout(() => {
-    let inp = document.getElementById('inputColetorVisivel');
+    let inp = document.getElementById('inputColetorInvisivel');
     if (inp) {
       inp.value = '';
       inp.focus();
     }
   }, 100);
-}
-
-async function processarColetorManual() {
-  let inp = document.getElementById('inputColetorVisivel');
-  if (!inp) return;
-  let codigo = inp.value.trim();
-  inp.value = '';
-  if (!codigo) { mostrarToast('Digite ou leia um código', 'erro'); return; }
-  let resultado = await confProcessarLeitura(codigo);
-  confLogScanner(resultado, codigo);
 }
 
 function confLogScanner(resultado, texto) {
@@ -5594,7 +5588,6 @@ window.confRemoverExtra = confRemoverExtra;
 window.confFiltrarLista = confFiltrarLista;
 window.confScannerQR = confScannerQR;
 window.confAbrirColetor = confAbrirColetor;
-window.processarColetorManual = processarColetorManual;
 window.confScannerContinuo = confScannerContinuo;
 window.confFecharScanner = confFecharScanner;
 window.finalizarConferencia = finalizarConferencia;
@@ -5602,7 +5595,7 @@ window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
 
 document.addEventListener("DOMContentLoaded", function() {
-  let inp = document.getElementById('inputColetorVisivel');
+  let inp = document.getElementById('inputColetorInvisivel');
   let coletorTimer = null;
   if (inp) {
     inp.addEventListener('input', function() {
@@ -5643,7 +5636,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (conferencia && conferencia.coletorMode) {
       let modal = document.getElementById('modalScannerConf');
       if (modal && !modal.classList.contains('hidden')) {
-        let inp = document.getElementById('inputColetorVisivel');
+        let inp = document.getElementById('inputColetorInvisivel');
         if (inp && document.activeElement !== inp) {
           inp.focus();
         }
