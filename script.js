@@ -4978,6 +4978,14 @@ async function confAbrirColetor() {
   if (coletorContainer) coletorContainer.classList.remove('hidden');
 
   document.getElementById('modalScannerConf').classList.remove('hidden');
+
+  setTimeout(() => {
+    let inp = document.getElementById('inputColetorInvisivel');
+    if (inp) {
+      inp.value = '';
+      inp.focus();
+    }
+  }, 100);
 }
 
 function confLogScanner(resultado, texto) {
@@ -5557,39 +5565,41 @@ window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
 
 document.addEventListener("DOMContentLoaded", function() {
-  let inp = document.getElementById('inputColetor');
-let coletorBuffer = '';
-let coletorTimeout = null;
+  let inp = document.getElementById('inputColetorInvisivel');
+  if (inp) {
+    inp.addEventListener('input', async function() {
+      let val = this.value;
+      if (val.includes('\n') || val.includes('\r') || val.length >= 8) {
+        let codigo = val.replace(/[\r\n]+/g, '').trim();
+        this.value = '';
+        if (codigo) {
+          let resultado = await confProcessarLeitura(codigo);
+          confLogScanner(resultado, codigo);
+        }
+      }
+    });
 
-document.addEventListener('keydown', async function(e) {
-  let modal = document.getElementById('modalScannerConf');
-  if (!modal || modal.classList.contains('hidden') || !conferencia.coletorMode) return;
-
-  if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
-
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    if (coletorTimeout) clearTimeout(coletorTimeout);
-    let codigo = coletorBuffer.trim();
-    coletorBuffer = '';
-    if (codigo) {
-      let resultado = await confProcessarLeitura(codigo);
-      confLogScanner(resultado, codigo);
-    }
-    return;
-  }
-
-  if (e.key.length === 1) {
-    coletorBuffer += e.key;
-    if (coletorTimeout) clearTimeout(coletorTimeout);
-    coletorTimeout = setTimeout(async () => {
-      let codigo = coletorBuffer.trim();
-      coletorBuffer = '';
-      if (codigo.length >= 3) {
+    inp.addEventListener('keydown', async function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        let codigo = this.value.trim();
+        this.value = '';
+        if (!codigo) return;
         let resultado = await confProcessarLeitura(codigo);
         confLogScanner(resultado, codigo);
       }
-    }, 90);
+    });
   }
-});
+
+  document.addEventListener('click', function() {
+    if (conferencia && conferencia.coletorMode) {
+      let modal = document.getElementById('modalScannerConf');
+      if (modal && !modal.classList.contains('hidden')) {
+        let inp = document.getElementById('inputColetorInvisivel');
+        if (inp && document.activeElement !== inp) {
+          inp.focus();
+        }
+      }
+    }
+  });
 });
