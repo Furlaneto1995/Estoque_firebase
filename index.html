@@ -792,28 +792,22 @@
 
 <!-- ================= MODAL SCANNER CONFERÊNCIA ================= -->
 <div id="modalScannerConf" class="modal-overlay hidden">
-  <div class="modal-saida-content" style="background:#ffffff; max-width:420px; width:92vw;">
+  <div class="modal-saida-content" style="background:#ffffff; max-width:440px; width:92vw; display:flex; flex-direction:column; max-height:85vh;">
     <div class="modal-saida-header">
-      <h3 id="confScannerTitulo">Escanear para conferência</h3>
+      <h3 id="confScannerTitulo">Coletor de Dados</h3>
       <button class="config-fechar" onclick="confFecharScanner()">✕</button>
     </div>
     <div id="readerConf" style="width:100%; min-height:260px;"></div>
     
-    <!-- Coletor display & input (todo branco, ocupando o espaço onde ficava a câmera) -->
-    <div id="coletorDisplayContainer" class="hidden" style="text-align:center; padding:10px 0;">
-      <div id="confColetorBigStatus" style="font-size:32px; font-weight:800; color:#16a34a; background:#f0fdf4; border:2px dashed #bbf7d0; border-radius:12px; padding:24px 10px; margin-bottom:12px;">
-        0 conferida(s)
+    <!-- Coletor Log Container (substitui a câmera e o quadrado grande) -->
+    <div id="coletorDisplayContainer" class="hidden" style="flex:1; display:flex; flex-direction:column; min-height:0; gap:8px; padding:4px 0;">
+      <div style="font-size:13px; font-weight:600; color:#475569; display:flex; justify-content:space-between; align-items:center;">
+        <span>Histórico de leituras:</span>
+        <span id="confScannerStatus" style="font-size:13px; font-weight:700; color:#16a34a;">0 conferida(s)</span>
       </div>
-      <input type="text" id="inputColetor" placeholder="Aguardando leitura do coletor..." style="width:100%; padding:14px; font-size:16px; border:2px solid #2563eb; border-radius:8px; text-align:center; background:#ffffff; color:#0f172a; outline:none;" autocomplete="off">
-      <div style="font-size:12px; color:#64748b; margin-top:6px;">
-        💡 Aponte o coletor para a etiqueta (leitura automática)
-      </div>
+      <div id="confScannerLog" style="flex:1; min-height:200px; overflow-y:auto; font-size:13px; color:#1e293b; border:1px solid #cbd5e1; border-radius:8px; padding:10px; background:#f8fafc;"></div>
     </div>
 
-    <div id="confScannerStatus" style="text-align:center; font-size:14px; font-weight:700; color:#16a34a; margin:8px 0;">
-      0 conferida(s)
-    </div>
-    <div id="confScannerLog" style="max-height:140px; overflow-y:auto; font-size:12px; color:#64748b; border:1px solid #e2e8f0; border-radius:8px; padding:8px; background:#f8fafc;"></div>
     <button class="btn-modal btn-cancelar" onclick="confFecharScanner()" style="margin-top:10px;">Finalizar</button>
   </div>
 </div>
@@ -935,5 +929,5 @@ atualizarCampoDataManualGerador();
   </div>
 </div>
 
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1c99900faf8f1c9',t:'MTc4NDI5NDk4OA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1c9b128bcbd6236',t:'MTc4NDI5NTk3OA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
