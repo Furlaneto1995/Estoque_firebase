@@ -4,7 +4,7 @@ let collectorFocusTimer = null;
 let collectorReadTimer = null;
 
 function iniciarMonitoramentoColetor() {
-  const input = document.getElementById("collectorInput");
+  const input = document.getElementById("inputColetorVisivel");
   if (!input) return;
 
   input.value = "";
@@ -47,7 +47,7 @@ function iniciarMonitoramentoColetor() {
 }
 
 async function processarLeituraColetorInput() {
-  const input = document.getElementById("collectorInput");
+  const input = document.getElementById("inputColetorVisivel");
   if (!input) return;
   let val = input.value.trim();
   input.value = "";
