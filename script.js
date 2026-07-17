@@ -1,5 +1,64 @@
 
 let coletorInterval = null;
+let collectorFocusTimer = null;
+let collectorReadTimer = null;
+
+function iniciarMonitoramentoColetor() {
+  const input = document.getElementById("collectorInput");
+  if (!input) return;
+
+  input.value = "";
+  input.focus();
+
+  if (collectorFocusTimer) clearInterval(collectorFocusTimer);
+  collectorFocusTimer = setInterval(() => {
+    let modal = document.getElementById('modalScannerConf');
+    if (!modal || modal.classList.contains('hidden') || !conferencia.coletorMode) return;
+    if (document.activeElement !== input) {
+      try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+    }
+  }, 600);
+
+  input.oninput = function() {
+    if (collectorReadTimer) clearTimeout(collectorReadTimer);
+    collectorReadTimer = setTimeout(() => {
+      processarLeituraColetorInput();
+    }, 150);
+  };
+
+  input.onpaste = function() {
+    if (collectorReadTimer) clearTimeout(collectorReadTimer);
+    collectorReadTimer = setTimeout(() => {
+      processarLeituraColetorInput();
+    }, 50);
+  };
+
+  input.onchange = function() {
+    processarLeituraColetorInput();
+  };
+
+  input.onkeydown = function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (collectorReadTimer) clearTimeout(collectorReadTimer);
+      processarLeituraColetorInput();
+    }
+  };
+}
+
+async function processarLeituraColetorInput() {
+  const input = document.getElementById("collectorInput");
+  if (!input) return;
+  let val = input.value.trim();
+  input.value = "";
+  if (!val) return;
+  let codigo = val.replace(/[\r\n\t]+/g, "").trim();
+  if (codigo.length >= 2) {
+    let resultado = await confProcessarLeitura(codigo);
+    confLogScanner(resultado, codigo);
+  }
+}
+
 
 function iniciarMonitoramentoColetor() {
   if (coletorInterval) clearInterval(coletorInterval);
@@ -7,7 +66,7 @@ function iniciarMonitoramentoColetor() {
     let modal = document.getElementById('modalScannerConf');
     if (!modal || modal.classList.contains('hidden') || !conferencia.coletorMode) return;
 
-    let inp = document.getElementById('inputColetorInvisivel');
+    let inp = document.getElementById('inputColetorVisivel');
     if (!inp) return;
 
     if (document.activeElement !== inp) {
@@ -5009,7 +5068,7 @@ async function confAbrirColetor() {
   iniciarMonitoramentoColetor();
 
   setTimeout(() => {
-    let inp = document.getElementById('inputColetorInvisivel');
+    let inp = document.getElementById('inputColetorVisivel');
     if (inp) {
       inp.value = '';
       inp.focus();
@@ -5056,6 +5115,7 @@ async function confFecharScanner() {
   conferencia.leitor = null;
   conferencia.coletorMode = false;
   if (coletorInterval) { clearInterval(coletorInterval); coletorInterval = null; }
+  if (collectorFocusTimer) { clearInterval(collectorFocusTimer); collectorFocusTimer = null; }
   coletorBuffer = '';
   document.getElementById('modalScannerConf').classList.add('hidden');
   let readerConf = document.getElementById('readerConf');
@@ -5595,7 +5655,7 @@ window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
 
 document.addEventListener("DOMContentLoaded", function() {
-  let inp = document.getElementById('inputColetorInvisivel');
+  let inp = document.getElementById('inputColetorVisivel');
   let coletorTimer = null;
   if (inp) {
     inp.addEventListener('input', function() {
@@ -5636,7 +5696,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (conferencia && conferencia.coletorMode) {
       let modal = document.getElementById('modalScannerConf');
       if (modal && !modal.classList.contains('hidden')) {
-        let inp = document.getElementById('inputColetorInvisivel');
+        let inp = document.getElementById('inputColetorVisivel');
         if (inp && document.activeElement !== inp) {
           inp.focus();
         }
