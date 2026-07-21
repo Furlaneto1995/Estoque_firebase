@@ -4796,6 +4796,8 @@ function abrirConferencia() {
 
 function fecharConferencia() {
 confJaFinalizada = false;
+  limparConfListener();
+  if (confUserNamesListener) { try { confUserNamesListener(); } catch(e) {} confUserNamesListener = null; }
   document.getElementById('modalConferencia').classList.add('hidden');
   if (conferencia.leitor) {
     try { conferencia.leitor.stop(); conferencia.leitor.clear(); } catch (e) {}
@@ -4840,6 +4842,13 @@ function iniciarConferencia() {
   });
 
   if (foto.length === 0) { mostrarToast('Nenhuma bobina no estoque para conferir', 'erro'); return; }
+  // Limpa listeners e docs _merged_ antigos
+  limparConfListener();
+  try {
+    db.collection('conferencias').get().then(snap => {
+      snap.forEach(doc => { if (doc.id.startsWith('_merged_')) doc.ref.delete(); });
+    }).catch(() => {});
+  } catch(e) {}
   conferencia.ativa = true;
   conferencia.tipo = tipoSelecionado;
   conferencia.dataInicio = new Date().toLocaleString('pt-BR');
@@ -4849,6 +4858,7 @@ function iniciarConferencia() {
   confSalvar();
   mostrarTelaConf('confTelaAndamento');
   confRenderizarLista();
+  iniciarMonitoramentoUsuarios();
   mostrarToast('Conferência iniciada — ' + foto.length + ' bobina(s)');
 }
 
@@ -4958,9 +4968,7 @@ function confProcessarLeitura(textoLido) {
     idCurtoLido = extrairIdCurtoBobina(texto);
   }
 
-  // ═══════════════════════════════════════════════
   // BUSCA SOMENTE POR ID ÚNICO — sem fallback
-  // ═══════════════════════════════════════════════
   if (idCurtoLido) {
     let encontrada = conferencia.fotoEstoque.find(function(bob) {
       let idCurtoBob = extrairIdCurtoBobina(bob.id);
@@ -5146,6 +5154,15 @@ function finalizarConferencia() {
 }
 
 /* ================= CONTINUAR CONFERÊNCIA ================= */
+
+let confListenerVar = null;
+
+function limparConfListener() {
+  if (confListenerVar) {
+    try { confListenerVar(); } catch(e) {}
+    confListenerVar = null;
+  }
+}
 
 function continuarConferencia() {
   if (conferencia.fotoEstoque.length === 0) {
@@ -5504,6 +5521,32 @@ function selecionarModoConferencia(modo) {
   abrirConferencia();
 }
 
+let confUserNamesListener = null;
+
+function iniciarMonitoramentoUsuarios() {
+  if (confUserNamesListener) { try { confUserNamesListener(); } catch(e) {} confUserNamesListener = null; }
+  if (modoConferencia !== 2 || !nomeUsuarioConferencia) return;
+  confUserNamesListener = db.collection('conferencias').onSnapshot(snap => {
+    let usuariosConectados = [];
+    snap.forEach(doc => {
+      if (doc.id.startsWith('_')) return;
+      let d = doc.data();
+      if (d.usuario && d.usuario.toLowerCase() !== nomeUsuarioConferencia.toLowerCase()) {
+        if (d.finalizada) usuariosConectados.push(d.usuario + ' ✅');
+        else usuariosConectados.push(d.usuario + ' 👤');
+      }
+    });
+    let container = document.getElementById('confUsuariosContainer');
+    if (!container) return;
+    if (usuariosConectados.length > 0) {
+      container.style.display = 'flex';
+      container.innerHTML = '👥 <strong>Conferindo:</strong> ' + usuariosConectados.join(' | ');
+    } else {
+      container.style.display = 'none';
+    }
+  });
+}
+
 // Salva parcial no Firebase durante a conferência
 async function confSalvarFirebase() {
   if (!nomeUsuarioConferencia || modoConferencia === 1) return;
@@ -5563,7 +5606,8 @@ console.log('Salvei como finalizada:', nomeUsuarioConferencia);
     if (btnJuntar) btnJuntar.style.display = 'none';
 
     // Escuta Firebase até os dois finalizarem
-    let listener = db.collection('conferencias').onSnapshot(snap => {
+    limparConfListener();
+    confListenerVar = db.collection('conferencias').onSnapshot(snap => {
   let finalizadas = [];
   let merged = false;
 
@@ -5575,7 +5619,7 @@ console.log('Salvei como finalizada:', nomeUsuarioConferencia);
 
   // Se o outro já fez o merge, avisa e para de escutar
   if (merged) {
-    listener();
+    limparConfListener();
     let btnJuntar = document.getElementById('btnJuntarConferencias');
     let aguardando = document.getElementById('confAguardandoContainer');
     if (btnJuntar) btnJuntar.style.display = 'none';
@@ -5588,7 +5632,7 @@ console.log('Salvei como finalizada:', nomeUsuarioConferencia);
   }
 
   if (finalizadas.length >= 2) {
-    listener();
+    limparConfListener();
     let btnJuntar = document.getElementById('btnJuntarConferencias');
     let aguardando = document.getElementById('confAguardandoContainer');
     if (btnJuntar) btnJuntar.style.display = 'block';
@@ -5609,16 +5653,21 @@ async function juntarConferencias() {
     let snapshot = await db.collection('conferencias').get();
     let todas = [];
     let docsRefs = [];
+    let nomesUsuarios = [];
     snapshot.forEach(doc => {
-      if (!doc.id.startsWith('_')) {
-        todas.push(doc.data());
-        docsRefs.push(doc.ref);
-      }
+      if (doc.id.startsWith('_')) return;
+      let d = doc.data();
+      todas.push(d);
+      docsRefs.push(doc.ref);
+      if (d.usuario) nomesUsuarios.push(d.usuario);
     });
 
     if (todas.length < 2) {
       mostrarToast('Aguardando o outro usuário', 'erro'); return;
     }
+
+    // Mostra quem está unindo
+    let usuariosStr = nomesUsuarios.length > 0 ? nomesUsuarios.join(' + ') : '';
 
     // Mescla conferidas (união)
     let todasConferidas = new Set();
@@ -5654,13 +5703,12 @@ async function juntarConferencias() {
     if (btnJuntar) btnJuntar.style.display = 'none';
     if (aguardando) aguardando.style.display = 'none';
 
-    // ═══════════════════════════════════════════════
     // PRIMEIRO: escreve doc de controle "_merged"
     // Isso avisa o outro usuário que o merge já ocorreu
-    // ═══════════════════════════════════════════════
     await db.collection('conferencias').doc('_merged_' + Date.now()).set({
       merged: true,
-      mergedAt: new Date().toISOString()
+      mergedAt: new Date().toISOString(),
+      mergedBy: nomesUsuarios
     });
 
     // DEPOIS limpa os docs dos usuários
@@ -5671,7 +5719,8 @@ async function juntarConferencias() {
     // Mostra resultado final mesclado
     finalizarConferencia();
 
-    mostrarToast('✅ Conferências unidas com sucesso!');
+    let msg = '✅ ' + (usuariosStr ? usuariosStr + ' — ' : '') + 'Conferências unidas!';
+    mostrarToast(msg);
     if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
   } catch(e) {
@@ -5697,7 +5746,7 @@ window.confRemoverExtra = confRemoverExtra;
 window.confFiltrarLista = confFiltrarLista;
 window.confScannerQR = confScannerQR;
 window.confAbrirColetor = confAbrirColetor;
-// window.confScannerContinuo = confScannerContinuo; // função não definida - removida
+// window.confScannerContinuo = confScannerContinuo; // função não definida
 window.confFecharScanner = confFecharScanner;
 window.finalizarConferencia = finalizarConferencia;
 window.confAjustarEstoque = confAjustarEstoque;
