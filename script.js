@@ -5617,17 +5617,26 @@ console.log('Salvei como finalizada:', nomeUsuarioConferencia);
     if (d.finalizada === true) finalizadas.push(d);
   });
 
-  // Se o outro já fez o merge, avisa e para de escutar
+  // Se o outro já fez o merge, APLICA o resultado automaticamente
   if (merged) {
     limparConfListener();
-    let btnJuntar = document.getElementById('btnJuntarConferencias');
-    let aguardando = document.getElementById('confAguardandoContainer');
-    if (btnJuntar) btnJuntar.style.display = 'none';
-    if (aguardando) {
-      aguardando.style.display = 'block';
-      aguardando.innerHTML = '<div style="font-size:13px;font-weight:600;color:#16a34a;">✅ O outro usuário já uniu as conferências!</div>';
-    }
-    mostrarToast('O outro operador já uniu as conferências');
+    // Procura o doc _merged_ com os dados
+    snap.forEach(async function(doc) {
+      let d = doc.data();
+      if (d.merged === true && d.result) {
+        // Aplica o resultado mesclado localmente
+        conferencia.conferidas = d.result.conferidas || conferencia.conferidas;
+        conferencia.extras = d.result.extras || conferencia.extras;
+        if (d.result.fotoEstoque) conferencia.fotoEstoque = d.result.fotoEstoque;
+        conferencia.ativa = false;
+        confSalvar();
+        // Mostra resultado
+        finalizarConferencia();
+        let mergedBy = d.mergedBy ? ' por ' + d.mergedBy.join(' + ') : '';
+        mostrarToast('✅ Conferências unidas' + mergedBy + '!');
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      }
+    });
     return;
   }
 
@@ -5703,12 +5712,18 @@ async function juntarConferencias() {
     if (btnJuntar) btnJuntar.style.display = 'none';
     if (aguardando) aguardando.style.display = 'none';
 
-    // PRIMEIRO: escreve doc de controle "_merged"
-    // Isso avisa o outro usuário que o merge já ocorreu
+    // PRIMEIRO: escreve doc de controle "_merged" COM os dados mesclados
+    // Assim o outro dispositivo pode ler o resultado automaticamente
     await db.collection('conferencias').doc('_merged_' + Date.now()).set({
       merged: true,
       mergedAt: new Date().toISOString(),
-      mergedBy: nomesUsuarios
+      mergedBy: nomesUsuarios,
+      // Salva o resultado mesclado para o outro dispositivo ler
+      result: {
+        conferidas: Array.from(todasConferidas),
+        extras: todosExtras,
+        fotoEstoque: foto
+      }
     });
 
     // DEPOIS limpa os docs dos usuários
