@@ -15,6 +15,13 @@
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+</style>
 </head>
 
 <body>
@@ -717,6 +724,9 @@
         </div>
       </div>
 
+      <!-- Usuários simultâneos (modo 2) -->
+      <div id="confUsuariosContainer" style="display:none; align-items:center; gap:6px; padding:6px 10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; font-size:12px; color:#1e3a8a;"></div>
+
       <!-- Scanner -->
       <div class="qr-actions-row">
         <button class="btn-scan-qr btn-scan-compact" onclick="confScannerQR()">📷 Câmera</button>
@@ -770,13 +780,15 @@
 
   <!-- Aparece quando está aguardando o outro usuário -->
   <div id="confAguardandoContainer" style="display:none; text-align:center; padding:10px; background:#eff6ff; border-radius:8px;">
-    <div style="font-size:13px; font-weight:600; color:#1e3a8a;">⏳ Aguardando o outro usuário finalizar...</div>
-    <div id="confAguardandoNome" style="font-size:12px; color:#64748b; margin-top:4px;"></div>
+    <div style="font-size:13px; font-weight:600; color:#1e3a8a;">⏳ Aguardando dados do outro usuário...</div>
+    <div id="confAguardandoNome" style="font-size:12px; color:#64748b; margin-top:4px;">
+      Clique em "Juntar" para atualizar ou baixar os dados do outro operador.
+    </div>
   </div>
 
   <!-- Aparece quando os dois finalizaram -->
   <button id="btnJuntarConferencias" class="btn-confirmar"
-          style="display:none; background:#1e3a8a;"
+          style="display:block; background:#1e3a8a;"
           onclick="juntarConferencias()">
     🔗 Juntar conferências
   </button>
@@ -945,5 +957,5 @@ atualizarCampoDataManualGerador();
   </div>
 </div>
 
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1cae3346f010d27',t:'MTc4NDMwODUxMw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1ecb1a3fc10b840',t:'MTc4NDY2Mjk5OQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1cae3346f010d27',t:'MTc4NDMwODUxMw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1edaf1b4fe328b5',t:'MTc4NDY3MzM4MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
