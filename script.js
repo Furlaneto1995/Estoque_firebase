@@ -4950,46 +4950,32 @@ function confProcessarLeitura(textoLido) {
   let dados = null;
   try { dados = JSON.parse(texto); } catch (e) { dados = interpretarQRSimplificado(texto); }
 
-  let encontrada = null;
   let idCurtoLido = '';
-  if (dados) {
-    idCurtoLido = dados.bobinaId || '';
+  if (dados && dados.bobinaId) {
+    idCurtoLido = dados.bobinaId;
   }
   if (!idCurtoLido) {
     idCurtoLido = extrairIdCurtoBobina(texto);
   }
 
-  // 1) Busca direta por ID curto ou ID completo em fotoEstoque
-  if (idCurtoLido || texto) {
-    encontrada = conferencia.fotoEstoque.find(function(bob) {
+  // ═══════════════════════════════════════════════
+  // BUSCA SOMENTE POR ID ÚNICO — sem fallback
+  // ═══════════════════════════════════════════════
+  if (idCurtoLido) {
+    let encontrada = conferencia.fotoEstoque.find(function(bob) {
       let idCurtoBob = extrairIdCurtoBobina(bob.id);
-      return (idCurtoLido && idCurtoBob === idCurtoLido) || 
-             bob.id === texto || 
-             (bob.idCurto && bob.idCurto === texto) ||
-             (idCurtoBob === texto.toLowerCase());
+      return idCurtoBob === idCurtoLido;
     }) || null;
+
+    if (encontrada) {
+      if (conferencia.conferidas.includes(encontrada.id)) return 'duplicada';
+      conferencia.conferidas.push(encontrada.id);
+      confSalvar(); confRenderizarLista();
+      return 'conferida';
+    }
   }
 
-  // 2) Fallback por item, versão e peso (se dados parseados)
-  if (!encontrada && dados && dados.item && dados.versao) {
-    let candidatos = conferencia.fotoEstoque.filter(function(bob) {
-      return String(bob.item) === String(dados.item) &&
-        String(bob.versao) === String(dados.versao) &&
-        (dados.peso ? Math.round(Number(bob.peso)) === Math.round(Number(dados.peso)) : true);
-    });
-    encontrada = candidatos.find(function(bob) {
-      return !conferencia.conferidas.includes(bob.id);
-    }) || candidatos[0] || null;
-  }
-
-  if (encontrada) {
-    if (conferencia.conferidas.includes(encontrada.id)) return 'duplicada';
-    conferencia.conferidas.push(encontrada.id);
-    confSalvar(); confRenderizarLista();
-    return 'conferida';
-  }
-
-  // Se tem dados válidos mas não está no estoque -> Extra
+  // Não encontrou por ID — tenta como extra se tiver dados válidos
   if (dados && dados.item && dados.versao) {
     let tipo = dados.tipo || descobrirTipoPorItem(dados.item);
     let tamanho = (tipo && banco[tipo] && banco[tipo][dados.item] && banco[tipo][dados.item][String(dados.versao)])
@@ -5002,6 +4988,8 @@ function confProcessarLeitura(textoLido) {
   return 'erro';
 }
 
+let confScanCooldown = false;
+
 async function confScannerQR() {
   conferencia.coletorMode = false;
   conferencia.continuoMode = false;
@@ -5011,11 +4999,11 @@ async function confScannerQR() {
   
   let readerConf = document.getElementById('readerConf');
   if (readerConf) {
-    readerConf.classList.remove('hidden');
+    readerConf.style.display = 'block';
     readerConf.innerHTML = '';
   }
-  let coletorContainer = document.getElementById('coletorDisplayContainer');
-  if (coletorContainer) coletorContainer.classList.add('hidden');
+  let collectorInput = document.getElementById('collectorInput');
+  if (collectorInput) collectorInput.style.display = 'none';
   let statusLine = document.getElementById('confScannerStatus');
   if (statusLine) statusLine.classList.remove('hidden');
 
@@ -5025,8 +5013,11 @@ async function confScannerQR() {
     conferencia.leitor = new Html5Qrcode('readerConf');
     await conferencia.leitor.start(
       { facingMode: 'environment' },
-      { fps: 12, qrbox: { width: 240, height: 240 } },
+      { fps: 5, qrbox: { width: 240, height: 240 } },
       async (decodedText) => {
+        if (confScanCooldown) return;
+        confScanCooldown = true;
+        setTimeout(() => { confScanCooldown = false; }, 800);
         let resultado = await confProcessarLeitura(decodedText);
         confLogScanner(resultado, decodedText);
         document.getElementById('confScannerStatus').textContent = conferencia.conferidas.length + ' conferida(s)';
@@ -5051,9 +5042,13 @@ async function confAbrirColetor() {
   coletorBuffer = '';
   
   let readerConf = document.getElementById('readerConf');
-  if (readerConf) readerConf.classList.add('hidden');
-  let coletorContainer = document.getElementById('coletorDisplayContainer');
-  if (coletorContainer) coletorContainer.classList.remove('hidden');
+  if (readerConf) readerConf.style.display = 'none';
+  let collectorInput = document.getElementById('collectorInput');
+  if (collectorInput) {
+    collectorInput.style.display = 'block';
+    collectorInput.value = '';
+    collectorInput.focus();
+  }
 
   document.getElementById('modalScannerConf').classList.remove('hidden');
 
@@ -5113,10 +5108,10 @@ async function confFecharScanner() {
   let readerConf = document.getElementById('readerConf');
   if (readerConf) {
     readerConf.innerHTML = '';
-    readerConf.classList.remove('hidden');
+    readerConf.style.display = 'block';
   }
-  let coletorContainer = document.getElementById('coletorDisplayContainer');
-  if (coletorContainer) coletorContainer.classList.add('hidden');
+  let collectorInput = document.getElementById('collectorInput');
+  if (collectorInput) collectorInput.style.display = 'none';
 
   confRenderizarLista();
 }
@@ -5125,7 +5120,9 @@ function finalizarConferencia() {
   let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
   let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
   if (conferidas.length === 0) { mostrarToast('Nenhuma bobina foi conferida ainda', 'erro'); return; }
-  if (pendentes.length > 0) { if (!confirm('Ainda há ' + pendentes.length + ' bobina(s) não conferida(s).\n\nFinalizar mesmo assim?')) return; }
+  if (pendentes.length > 0) {
+    if (!confirm('⚠️ Ainda há ' + pendentes.length + ' bobina(s) não conferida(s).\n\nFinalizar mesmo assim?\n(Dá pra continuar depois pelo botão "▶️ Continuar")')) return;
+  }
   conferencia.ativa = false;
   confSalvar();
   document.getElementById('confResConferidas').textContent = conferidas.length;
@@ -5147,6 +5144,37 @@ function finalizarConferencia() {
   document.getElementById('confListaResultado').innerHTML = html;
   mostrarTelaConf('confTelaResultado');
 }
+
+/* ================= CONTINUAR CONFERÊNCIA ================= */
+
+function continuarConferencia() {
+  if (conferencia.fotoEstoque.length === 0) {
+    mostrarToast('Nenhuma conferência para continuar', 'erro');
+    return;
+  }
+  conferencia.ativa = true;
+  if (modoConferencia === 2 && nomeUsuarioConferencia) {
+    try {
+      db.collection('conferencias')
+        .doc(nomeUsuarioConferencia.toLowerCase())
+        .set({
+          usuario: nomeUsuarioConferencia,
+          conferidas: conferencia.conferidas || [],
+          extras: conferencia.extras || [],
+          fotoEstoque: conferencia.fotoEstoque || [],
+          ativa: true,
+          finalizada: false,
+          ultimaAtualizacao: new Date().toISOString()
+        }, { merge: true });
+    } catch(e) { console.error(e); }
+  }
+  confSalvar();
+  mostrarTelaConf('confTelaAndamento');
+  confRenderizarLista();
+  mostrarToast('▶️ Continuando conferência — ' + conferencia.conferidas.length + ' já conferida(s)');
+}
+
+/* ================= CONTINUAR CONFERÊNCIA ================= */
 
 function confAjustarEstoque() {
   let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
@@ -5537,16 +5565,27 @@ console.log('Salvei como finalizada:', nomeUsuarioConferencia);
     // Escuta Firebase até os dois finalizarem
     let listener = db.collection('conferencias').onSnapshot(snap => {
   let finalizadas = [];
-  let todas = [];
+  let merged = false;
 
   snap.forEach(doc => {
     let d = doc.data();
-    todas.push(doc.id);
-    console.log('Doc:', doc.id, '| finalizada:', d.finalizada, '| tipo:', typeof d.finalizada);
+    if (d.merged === true) { merged = true; return; }
     if (d.finalizada === true) finalizadas.push(d);
   });
 
-  console.log('Todos os docs:', todas, '| Finalizadas:', finalizadas.length);
+  // Se o outro já fez o merge, avisa e para de escutar
+  if (merged) {
+    listener();
+    let btnJuntar = document.getElementById('btnJuntarConferencias');
+    let aguardando = document.getElementById('confAguardandoContainer');
+    if (btnJuntar) btnJuntar.style.display = 'none';
+    if (aguardando) {
+      aguardando.style.display = 'block';
+      aguardando.innerHTML = '<div style="font-size:13px;font-weight:600;color:#16a34a;">✅ O outro usuário já uniu as conferências!</div>';
+    }
+    mostrarToast('O outro operador já uniu as conferências');
+    return;
+  }
 
   if (finalizadas.length >= 2) {
     listener();
@@ -5569,7 +5608,13 @@ async function juntarConferencias() {
   try {
     let snapshot = await db.collection('conferencias').get();
     let todas = [];
-    snapshot.forEach(doc => todas.push(doc.data()));
+    let docsRefs = [];
+    snapshot.forEach(doc => {
+      if (!doc.id.startsWith('_')) {
+        todas.push(doc.data());
+        docsRefs.push(doc.ref);
+      }
+    });
 
     if (todas.length < 2) {
       mostrarToast('Aguardando o outro usuário', 'erro'); return;
@@ -5609,8 +5654,19 @@ async function juntarConferencias() {
     if (btnJuntar) btnJuntar.style.display = 'none';
     if (aguardando) aguardando.style.display = 'none';
 
-    // Limpa conferências do Firebase
-    snapshot.forEach(doc => doc.ref.delete());
+    // ═══════════════════════════════════════════════
+    // PRIMEIRO: escreve doc de controle "_merged"
+    // Isso avisa o outro usuário que o merge já ocorreu
+    // ═══════════════════════════════════════════════
+    await db.collection('conferencias').doc('_merged_' + Date.now()).set({
+      merged: true,
+      mergedAt: new Date().toISOString()
+    });
+
+    // DEPOIS limpa os docs dos usuários
+    for (let ref of docsRefs) {
+      try { await ref.delete(); } catch(e) {}
+    }
 
     // Mostra resultado final mesclado
     finalizarConferencia();
@@ -5632,6 +5688,7 @@ window.confFinalizarColaborativo = confFinalizarColaborativo;
 window.juntarConferencias = juntarConferencias;
 window.abrirConferencia = abrirConferencia;
 window.fecharConferencia = fecharConferencia;
+window.continuarConferencia = continuarConferencia;
 window.iniciarConferencia = iniciarConferencia;
 window.pausarConferencia = pausarConferencia;
 window.confMarcarManual = confMarcarManual;
