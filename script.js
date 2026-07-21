@@ -5184,6 +5184,34 @@ function finalizarConferencia() {
   }
 }
 
+/* ================= FINALIZAR CONFERÊNCIA SEM CONFIRMAR (para auto-merge) ================= */
+
+function finalizarConferenciaSilenciosa() {
+  let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
+  let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
+  if (conferidas.length === 0) return;
+  conferencia.ativa = false;
+  confSalvar();
+  document.getElementById('confResConferidas').textContent = conferidas.length;
+  document.getElementById('confResNaoEncontradas').textContent = pendentes.length;
+  document.getElementById('confResExtras').textContent = conferencia.extras.length;
+  let html = '';
+  if (conferidas.length > 0) {
+    html += '<div style="font-size:12px;font-weight:700;color:#16a34a;padding:4px 0;">✅ Conferidas (' + conferidas.length + ')</div>';
+    conferidas.forEach(bob => { html += '<div style="padding:6px 8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;">✅ ' + bob.item + ' — V' + bob.versao + ' · ' + Math.round(bob.peso) + ' kg · ' + bob.tamanho + '</div>'; });
+  }
+  if (pendentes.length > 0) {
+    html += '<div style="font-size:12px;font-weight:700;color:#dc2626;padding:4px 0;">❌ Não encontradas (' + pendentes.length + ')</div>';
+    pendentes.forEach(bob => { html += '<div style="padding:6px 8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;">❌ ' + bob.item + ' — V' + bob.versao + ' · ' + Math.round(bob.peso) + ' kg · ' + bob.tamanho + '</div>'; });
+  }
+  if (conferencia.extras.length > 0) {
+    html += '<div style="font-size:12px;font-weight:700;color:#ca8a04;padding:4px 0;">⚠️ Extras (' + conferencia.extras.length + ')</div>';
+    conferencia.extras.forEach(extra => { html += '<div style="padding:6px 8px;background:#fefce8;border:1px solid #fde68a;border-radius:6px;font-size:12px;">⚠️ ' + extra.item + ' — V' + extra.versao + ' · ' + Math.round(extra.peso) + ' kg · ' + (extra.tamanho || '') + '</div>'; });
+  }
+  document.getElementById('confListaResultado').innerHTML = html;
+  mostrarTelaConf('confTelaResultado');
+}
+
 /* ================= CONTINUAR CONFERÊNCIA ================= */
 
 let confListenerVar = null;
@@ -5704,8 +5732,8 @@ console.log('Salvei como finalizada:', nomeUsuarioConferencia);
         if (d.result.fotoEstoque) conferencia.fotoEstoque = d.result.fotoEstoque;
         conferencia.ativa = false;
         confSalvar();
-        // Mostra resultado
-        finalizarConferencia();
+        // Mostra resultado (sem confirm para não travar)
+        finalizarConferenciaSilenciosa();
         let mergedBy = d.mergedBy ? ' por ' + d.mergedBy.join(' + ') : '';
         mostrarToast('✅ Conferências unidas' + mergedBy + '!');
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
@@ -5760,7 +5788,7 @@ async function juntarConferencias() {
           if (d.result.fotoEstoque) conferencia.fotoEstoque = d.result.fotoEstoque;
           conferencia.ativa = false;
           confSalvar();
-          finalizarConferencia();
+          finalizarConferenciaSilenciosa();
           mostrarToast('✅ Conferências já estavam unidas!');
           if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
           return;
@@ -5858,6 +5886,7 @@ window.confAbrirColetor = confAbrirColetor;
 // window.confScannerContinuo = confScannerContinuo; // função não definida
 window.confFecharScanner = confFecharScanner;
 window.finalizarConferencia = finalizarConferencia;
+window.finalizarConferenciaSilenciosa = finalizarConferenciaSilenciosa;
 window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
 
