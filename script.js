@@ -5661,56 +5661,39 @@ async function juntarConferencias() {
   try {
     let snapshot = await db.collection('conferencias').get();
     let todas = [];
-    let docsRefs = [];
     let nomesUsuarios = [];
-    let mergedDoc = null;
+    let fotoEstoqueMerged = null;
+    
     snapshot.forEach(doc => {
-      if (doc.id.startsWith('_merged_')) {
-        mergedDoc = doc;
-        return;
-      }
       if (doc.id.startsWith('_')) return;
       let d = doc.data();
-      todas.push(d);
-      docsRefs.push(doc.ref);
       if (d.usuario) nomesUsuarios.push(d.usuario);
+      if (d.fotoEstoque) fotoEstoqueMerged = d.fotoEstoque;
+      if (d.result && d.result.fotoEstoque) fotoEstoqueMerged = d.result.fotoEstoque;
+      if (d.result && d.result.conferidas) {
+        // _merged_ doc com resultado
+        todas.push({ usuario: d.mergedBy ? d.mergedBy.join('+') : 'merged', conferidas: d.result.conferidas, extras: d.result.extras, fotoEstoque: d.result.fotoEstoque });
+      }
+      if (d.conferidas && !d.result) {
+        // Doc de usuário normal
+        todas.push(d);
+      }
     });
 
-    // Se tem _merged_ com resultado, aplica (refresh) mesclando com dados locais
-    if (mergedDoc) {
-      let d = mergedDoc.data();
-      if (d.result) {
-        let todasConferidas = new Set([...(conferencia.conferidas || []), ...(d.result.conferidas || [])]);
-        let todosExtras = [...(conferencia.extras || [])];
-        let extrasChaves = new Set();
-        todosExtras.forEach(e => extrasChaves.add(e.item + '|' + e.versao + '|' + e.peso));
-        for (let extra of (d.result.extras || [])) {
-          let chave = extra.item + '|' + extra.versao + '|' + extra.peso;
-          if (!extrasChaves.has(chave)) { extrasChaves.add(chave); todosExtras.push(extra); }
-        }
-        conferencia.conferidas = Array.from(todasConferidas);
-        conferencia.extras = todosExtras;
-        if (d.result.fotoEstoque) conferencia.fotoEstoque = d.result.fotoEstoque;
-        conferencia.ativa = false;
-        confSalvar();
-        finalizarConferenciaSilenciosa();
-        let mergedBy = d.mergedBy ? d.mergedBy.join(' + ') : '';
-        mostrarToast('✅ ' + (mergedBy ? mergedBy + ' — ' : '') + 'Atualizado!');
-        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-        return;
-      }
-    }
-
-    // Junta dados locais + Firebase
+    // Junta TUDO (dados locais + Firebase + _merged_)
     let todasConferidas = new Set(conferencia.conferidas || []);
     let todosExtras = [...(conferencia.extras || [])];
     let extrasChaves = new Set();
     todosExtras.forEach(e => extrasChaves.add(e.item + '|' + e.versao + '|' + e.peso));
 
-    let achouOutroUsuario = false;
+    let meuNome = (nomeUsuarioConferencia || '').toLowerCase();
+    let achouOutro = false;
+    
     todas.forEach(conf => {
-      if (conf.usuario && conf.usuario.toLowerCase() !== (nomeUsuarioConferencia || '').toLowerCase()) {
-        achouOutroUsuario = true;
+      let nomeConf = (conf.usuario || '').toLowerCase();
+      // Só adiciona se for de outro usuário OU se é merged
+      if (nomeConf !== meuNome || conf.usuario === 'merged') {
+        achouOutro = true;
         (conf.conferidas || []).forEach(id => todasConferidas.add(id));
         (conf.extras || []).forEach(extra => {
           let chave = extra.item + '|' + extra.versao + '|' + extra.peso;
@@ -5719,35 +5702,40 @@ async function juntarConferencias() {
       }
     });
 
-    if (!achouOutroUsuario && todas.length <= 1) {
-      mostrarToast('ℹ️ Nenhum dado de outro operador no Firebase', 'erro');
-      return;
+    // Se só tem os próprios dados, avisa
+    if (!achouOutro) {
+      let totalOutros = todas.filter(c => (c.usuario || '').toLowerCase() !== meuNome).length;
+      if (totalOutros === 0) {
+        mostrarToast('ℹ️ Nenhum dado de outro operador encontrado', 'erro');
+        return;
+      }
     }
 
-    let foto = todas.length > 0 ? (todas[0].fotoEstoque || conferencia.fotoEstoque) : conferencia.fotoEstoque;
+    // Atualiza conferência local
     conferencia.conferidas = Array.from(todasConferidas);
     conferencia.extras = todosExtras;
-    conferencia.fotoEstoque = foto;
+    if (fotoEstoqueMerged) conferencia.fotoEstoque = fotoEstoqueMerged;
     conferencia.ativa = false;
 
-    // Escreve _merged_ com resultado (para o outro ler)
-    await db.collection('conferencias').doc('_merged_' + Date.now()).set({
-      merged: true,
-      mergedAt: new Date().toISOString(),
-      mergedBy: nomesUsuarios.length > 0 ? nomesUsuarios : ['desconhecido'],
-      result: {
-        conferidas: Array.from(todasConferidas),
-        extras: todosExtras,
-        fotoEstoque: foto
-      }
-    });
-
-    // NÃO deleta docs — só quem pode limpar é o "Fechar" com confirmação
-    console.log('Docs preservados — limpeza só no Fechar');
+    // Escreve _merged_ atualizado
+    try {
+      await db.collection('conferencias').doc('_merged_' + Date.now()).set({
+        merged: true,
+        mergedAt: new Date().toISOString(),
+        mergedBy: nomesUsuarios.length > 0 ? nomesUsuarios : ['desconhecido'],
+        result: {
+          conferidas: Array.from(todasConferidas),
+          extras: todosExtras,
+          fotoEstoque: conferencia.fotoEstoque
+        }
+      });
+    } catch(e) {}
 
     confSalvar();
     finalizarConferencia();
-    let msg = '✅ ' + (nomesUsuarios.length > 0 ? nomesUsuarios.join(' + ') + ' — ' : '') + 'Conferências unidas!';
+    
+    let totalUnico = nomesUsuarios.filter((n, i) => nomesUsuarios.indexOf(n) === i);
+    let msg = '✅ ' + (totalUnico.length > 0 ? totalUnico.join(' + ') + ' — ' : '') + 'Conferências unidas!';
     mostrarToast(msg);
     if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
