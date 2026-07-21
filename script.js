@@ -5621,40 +5621,27 @@ async function confSalvarFirebase() {
 
 // Marca como finalizada e verifica se pode juntar
 async function confFinalizarColaborativo() {
-  if (modoConferencia === 1) {
-    finalizarConferencia();
-    return;
+  // Salva no Firebase SEMPRE que tiver nome (funciona mesmo em modo solo)
+  if (nomeUsuarioConferencia) {
+    try {
+      await db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).set({
+        usuario: String(nomeUsuarioConferencia),
+        conferidas: conferencia.conferidas || [],
+        extras: conferencia.extras || [],
+        fotoEstoque: conferencia.fotoEstoque || [],
+        ativa: false,
+        finalizada: true,
+        ultimaAtualizacao: new Date().toISOString()
+      }, { merge: false });
+      confJaFinalizada = true;
+      console.log('Salvei como finalizada:', nomeUsuarioConferencia);
+    } catch(e) {
+      console.error('Erro ao salvar no Firebase:', e);
+    }
   }
 
-  if (!nomeUsuarioConferencia) {
-    finalizarConferencia();
-    return;
-  }
-
-  try {
-
-    
-    // Marca como finalizada no Firebase
-    await db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).set({
-      usuario: String(nomeUsuarioConferencia),
-      conferidas: conferencia.conferidas || [],
-      extras: conferencia.extras || [],
-      fotoEstoque: conferencia.fotoEstoque || [],
-      ativa: false,
-      finalizada: true,
-      ultimaAtualizacao: new Date().toISOString()
-    }, { merge: false });
-
-    confJaFinalizada = true;
-    console.log('Salvei como finalizada:', nomeUsuarioConferencia);
-
-    // Só mostra resultado — o botão Juntar já está sempre visível
-    finalizarConferencia();
-
-  } catch(e) {
-    console.error('Erro ao finalizar colaborativo:', e);
-    finalizarConferencia();
-  }
+  // Mostra resultado — o botão Juntar já está sempre visível
+  finalizarConferencia();
 }
 
 async function juntarConferencias() {
