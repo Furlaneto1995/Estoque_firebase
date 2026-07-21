@@ -5154,38 +5154,8 @@ function finalizarConferencia() {
   document.getElementById('confListaResultado').innerHTML = html;
   mostrarTelaConf('confTelaResultado');
 
-  // Se modo 2, fica de olho se o outro clicou em "Continuar"
-  if (modoConferencia === 2 && nomeUsuarioConferencia) {
-    confResultadoListener = setInterval(async function() {
-      try {
-        let snap = await db.collection('conferencias').get();
-        snap.forEach(doc => {
-          if (doc.id.startsWith('_')) return;
-          let d = doc.data();
-          if (d.usuario && 
-              d.usuario.toLowerCase() !== nomeUsuarioConferencia.toLowerCase() && 
-              d.ativa === true && 
-              d.finalizada === false) {
-            clearInterval(confResultadoListener);
-            confResultadoListener = null;
-            mostrarToast('👤 ' + d.usuario + ' continuou a conferência!');
-            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-            let btnContinue = document.querySelector('[onclick="continuarConferencia()"]');
-            if (btnContinue) {
-              btnContinue.style.animation = 'pulse 0.5s ease-in-out 3';
-              btnContinue.style.boxShadow = '0 0 0 3px #16a34a';
-              setTimeout(() => {
-                btnContinue.style.animation = '';
-                btnContinue.style.boxShadow = '';
-              }, 2000);
-            }
-            clearInterval(confResultadoListener);
-            confResultadoListener = null;
-          }
-        });
-      } catch(e) {}
-    }, 2000);
-  }
+  // Se modo 2, só mostra o botão Continuar sem listener
+  // (quem continuar vai em modo solo)
 }
 
 /* ================= FINALIZAR CONFERÊNCIA SEM CONFIRMAR (para auto-merge) ================= */
@@ -5241,76 +5211,25 @@ function continuarConferencia() {
   conferencia.ativa = true;
   confJaFinalizada = false;
   
-  // Limpa docs _merged_ da rodada anterior
+  // Limpa listeners e docs _merged_ da rodada anterior
   limparConfListener();
   if (confResultadoListener) { clearInterval(confResultadoListener); confResultadoListener = null; }
+  if (confUserNamesListener) { try { confUserNamesListener(); } catch(e) {} confUserNamesListener = null; }
   try {
     db.collection('conferencias').get().then(snap => {
       snap.forEach(doc => { if (doc.id.startsWith('_merged_')) doc.ref.delete(); });
     }).catch(() => {});
   } catch(e) {}
   
+  // Continua em modo SOLO — sem esperar o outro
+  let modoSalvo = modoConferencia;
+  modoConferencia = 1;
+  
   confSalvar();
-  
-  if (modoConferencia === 2 && nomeUsuarioConferencia) {
-    limparConfListener();
-    // Recria o doc no Firebase (foi deletado no merge)
-    try {
-      db.collection('conferencias')
-        .doc(nomeUsuarioConferencia.toLowerCase())
-        .set({
-          usuario: nomeUsuarioConferencia,
-          conferidas: conferencia.conferidas || [],
-          extras: conferencia.extras || [],
-          fotoEstoque: conferencia.fotoEstoque || [],
-          ativa: true,
-          finalizada: false,
-          ultimaAtualizacao: new Date().toISOString()
-        }, { merge: false });
-    } catch(e) { console.error(e); }
-
-    // Mostra "Aguardando o outro" imediatamente
-    let aguardando = document.getElementById('confAguardandoContainer');
-    let btnJuntar = document.getElementById('btnJuntarConferencias');
-    if (aguardando) {
-      aguardando.style.display = 'block';
-      aguardando.innerHTML = '<div style="font-size:13px;font-weight:600;color:#1e3a8a;">⏳ Aguardando o outro usuário também continuar...</div>';
-    }
-    if (btnJuntar) btnJuntar.style.display = 'none';
-
-    // Inicia polling esperando AMBOS finalizarem de novo
-    confListenerVar = setInterval(async function() {
-      try {
-        let snap = await db.collection('conferencias').get();
-        let finalizadas = [];
-        snap.forEach(doc => {
-          if (doc.id.startsWith('_')) return;
-          let d = doc.data();
-          if (d.finalizada === true && d.usuario) finalizadas.push(d);
-        });
-        if (finalizadas.length >= 2) {
-          clearInterval(confListenerVar);
-          confListenerVar = null;
-          let btnJuntar = document.getElementById('btnJuntarConferencias');
-          let aguardando = document.getElementById('confAguardandoContainer');
-          if (btnJuntar) btnJuntar.style.display = 'block';
-          if (aguardando) aguardando.style.display = 'none';
-          if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-          mostrarToast('Os dois finalizaram! Clique em Juntar.');
-        }
-      } catch(e) { console.error('Erro polling continuar:', e); }
-    }, 1000);
-    
-    mostrarTelaConf('confTelaAndamento');
-    confRenderizarLista();
-    mostrarToast('▶️ Continuando — ' + conferencia.conferidas.length + ' já conferida(s)');
-    return;
-  }
-  
-  // Modo 1 (único)
   mostrarTelaConf('confTelaAndamento');
   confRenderizarLista();
-  mostrarToast('▶️ Continuando — ' + conferencia.conferidas.length + ' já conferida(s)');
+  if (navigator.vibrate) navigator.vibrate([50]);
+  mostrarToast('▶️ Continuando solo — ' + conferencia.conferidas.length + ' já conferida(s)');
 }
 
 /* ================= CONTINUAR CONFERÊNCIA ================= */
