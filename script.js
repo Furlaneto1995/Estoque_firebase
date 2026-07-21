@@ -4797,9 +4797,8 @@ function abrirConferencia() {
 function fecharConferencia() {
 confJaFinalizada = false;
   limparConfListener();
-  if (confUserNamesListener) { try { confUserNamesListener(); } catch(e) {} confUserNamesListener = null; }
-  // Remove listener de resultado
-  if (confResultadoListener) { try { confResultadoListener(); } catch(e) {} confResultadoListener = null; }
+  if (confUserNamesListener) { clearInterval(confUserNamesListener); confUserNamesListener = null; }
+  if (confResultadoListener) { clearInterval(confResultadoListener); confResultadoListener = null; }
   document.getElementById('modalConferencia').classList.add('hidden');
   if (conferencia.leitor) {
     try { conferencia.leitor.stop(); conferencia.leitor.clear(); } catch (e) {}
@@ -5633,83 +5632,28 @@ async function confFinalizarColaborativo() {
   }
 
   try {
-    // Limpa _merged_ antigos antes de finalizar (evita merge fantasma)
+    // Limpa _merged_ antigos
     try {
       let snap = await db.collection('conferencias').get();
       snap.forEach(doc => { if (doc.id.startsWith('_merged_')) doc.ref.delete(); });
     } catch(e) {}
     
-    // Marca como finalizada
+    // Marca como finalizada no Firebase
     await db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).set({
-  usuario: String(nomeUsuarioConferencia),
-  conferidas: conferencia.conferidas || [],
-  extras: conferencia.extras || [],
-  fotoEstoque: conferencia.fotoEstoque || [],
-  ativa: false,
-  finalizada: true,
-  ultimaAtualizacao: new Date().toISOString()
-}, { merge: false });
+      usuario: String(nomeUsuarioConferencia),
+      conferidas: conferencia.conferidas || [],
+      extras: conferencia.extras || [],
+      fotoEstoque: conferencia.fotoEstoque || [],
+      ativa: false,
+      finalizada: true,
+      ultimaAtualizacao: new Date().toISOString()
+    }, { merge: false });
 
-confJaFinalizada = true; // ← AQUI
-console.log('Salvei como finalizada:', nomeUsuarioConferencia);
+    confJaFinalizada = true;
+    console.log('Salvei como finalizada:', nomeUsuarioConferencia);
 
-    // Mostra tela de resultado primeiro
+    // Só mostra resultado — o botão Juntar já está sempre visível
     finalizarConferencia();
-
-    let aguardando = document.getElementById('confAguardandoContainer');
-    let btnJuntar = document.getElementById('btnJuntarConferencias');
-
-    // Mostra aguardando imediatamente
-    if (aguardando) aguardando.style.display = 'block';
-    if (btnJuntar) btnJuntar.style.display = 'none';
-
-    // Verifica a cada 1s se o outro finalizou (mais confiável que onSnapshot)
-    limparConfListener();
-    confListenerVar = setInterval(async function() {
-  try {
-    let snap = await db.collection('conferencias').get();
-    let finalizadas = [];
-    let mergedDoc = null;
-
-    snap.forEach(doc => {
-      let d = doc.data();
-      if (doc.id.startsWith('_merged_')) {
-        mergedDoc = d;
-        return;
-      }
-      if (doc.id.startsWith('_')) return;
-      if (d.finalizada === true) finalizadas.push(d);
-    });
-
-    // Se o outro já fez o merge, aplica automaticamente
-    if (mergedDoc && mergedDoc.result) {
-      clearInterval(confListenerVar);
-      confListenerVar = null;
-      conferencia.conferidas = mergedDoc.result.conferidas || conferencia.conferidas;
-      conferencia.extras = mergedDoc.result.extras || conferencia.extras;
-      if (mergedDoc.result.fotoEstoque) conferencia.fotoEstoque = mergedDoc.result.fotoEstoque;
-      conferencia.ativa = false;
-      confSalvar();
-      finalizarConferenciaSilenciosa();
-      let mergedBy = mergedDoc.mergedBy ? ' por ' + mergedDoc.mergedBy.join(' + ') : '';
-      mostrarToast('✅ Conferências unidas' + mergedBy + '!');
-      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-      return;
-    }
-
-    // Se os dois finalizaram, mostra botão Juntar
-    if (finalizadas.length >= 2) {
-      clearInterval(confListenerVar);
-      confListenerVar = null;
-      let btnJuntar = document.getElementById('btnJuntarConferencias');
-      let aguardando = document.getElementById('confAguardandoContainer');
-      if (btnJuntar) btnJuntar.style.display = 'block';
-      if (aguardando) aguardando.style.display = 'none';
-      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-      mostrarToast('Os dois finalizaram! Clique em Juntar.');
-    }
-  } catch(e) { console.error('Erro no polling:', e); }
-}, 1000);
 
   } catch(e) {
     console.error('Erro ao finalizar colaborativo:', e);
