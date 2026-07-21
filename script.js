@@ -4798,6 +4798,8 @@ function fecharConferencia() {
 confJaFinalizada = false;
   limparConfListener();
   if (confUserNamesListener) { try { confUserNamesListener(); } catch(e) {} confUserNamesListener = null; }
+  // Remove listener de resultado
+  if (confResultadoListener) { try { confResultadoListener(); } catch(e) {} confResultadoListener = null; }
   document.getElementById('modalConferencia').classList.add('hidden');
   if (conferencia.leitor) {
     try { conferencia.leitor.stop(); conferencia.leitor.clear(); } catch (e) {}
@@ -5151,11 +5153,41 @@ function finalizarConferencia() {
   }
   document.getElementById('confListaResultado').innerHTML = html;
   mostrarTelaConf('confTelaResultado');
+
+  // Se modo 2, fica de olho se o outro clicou em "Continuar"
+  if (modoConferencia === 2 && nomeUsuarioConferencia) {
+    confResultadoListener = db.collection('conferencias').onSnapshot(snap => {
+      snap.forEach(doc => {
+        if (doc.id.startsWith('_')) return;
+        let d = doc.data();
+        // O outro usuário reiniciou a conferência
+        if (d.usuario && 
+            d.usuario.toLowerCase() !== nomeUsuarioConferencia.toLowerCase() && 
+            d.ativa === true && 
+            d.finalizada === false) {
+          limparConfListener();
+          mostrarToast('👤 ' + d.usuario + ' continuou a conferência!');
+          if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+          // Destaca o botão Continuar
+          let btnContinue = document.querySelector('[onclick="continuarConferencia()"]');
+          if (btnContinue) {
+            btnContinue.style.animation = 'pulse 0.5s ease-in-out 3';
+            btnContinue.style.boxShadow = '0 0 0 3px #16a34a';
+            setTimeout(() => {
+              btnContinue.style.animation = '';
+              btnContinue.style.boxShadow = '';
+            }, 2000);
+          }
+        }
+      });
+    });
+  }
 }
 
 /* ================= CONTINUAR CONFERÊNCIA ================= */
 
 let confListenerVar = null;
+let confResultadoListener = null;
 
 function limparConfListener() {
   if (confListenerVar) {
@@ -5170,7 +5202,12 @@ function continuarConferencia() {
     return;
   }
   conferencia.ativa = true;
+  confJaFinalizada = false;
+  confSalvar();
+  
   if (modoConferencia === 2 && nomeUsuarioConferencia) {
+    limparConfListener();
+    // Recria o doc no Firebase (foi deletado no merge)
     try {
       db.collection('conferencias')
         .doc(nomeUsuarioConferencia.toLowerCase())
@@ -5182,13 +5219,50 @@ function continuarConferencia() {
           ativa: true,
           finalizada: false,
           ultimaAtualizacao: new Date().toISOString()
-        }, { merge: true });
+        }, { merge: false });
     } catch(e) { console.error(e); }
+
+    // Mostra "Aguardando o outro" imediatamente
+    let aguardando = document.getElementById('confAguardandoContainer');
+    let btnJuntar = document.getElementById('btnJuntarConferencias');
+    if (aguardando) {
+      aguardando.style.display = 'block';
+      aguardando.innerHTML = '<div style="font-size:13px;font-weight:600;color:#1e3a8a;">⏳ Aguardando o outro usuário também continuar...</div>';
+    }
+    if (btnJuntar) btnJuntar.style.display = 'none';
+
+    // Inicia listener esperando AMBOS finalizarem de novo
+    confListenerVar = db.collection('conferencias').onSnapshot(snap => {
+      let finalizadas = [];
+      let todosAtivos = 0;
+      snap.forEach(doc => {
+        if (doc.id.startsWith('_')) return;
+        let d = doc.data();
+        if (d.finalizada === true && d.usuario) finalizadas.push(d);
+        if (d.ativa === true) todosAtivos++;
+      });
+      // Se os dois finalizaram, mostra botão Juntar
+      if (finalizadas.length >= 2) {
+        limparConfListener();
+        let btnJuntar = document.getElementById('btnJuntarConferencias');
+        let aguardando = document.getElementById('confAguardandoContainer');
+        if (btnJuntar) btnJuntar.style.display = 'block';
+        if (aguardando) aguardando.style.display = 'none';
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        mostrarToast('Os dois finalizaram! Clique em Juntar.');
+      }
+    });
+    
+    mostrarTelaConf('confTelaAndamento');
+    confRenderizarLista();
+    mostrarToast('▶️ Continuando — ' + conferencia.conferidas.length + ' já conferida(s)');
+    return;
   }
-  confSalvar();
+  
+  // Modo 1 (único)
   mostrarTelaConf('confTelaAndamento');
   confRenderizarLista();
-  mostrarToast('▶️ Continuando conferência — ' + conferencia.conferidas.length + ' já conferida(s)');
+  mostrarToast('▶️ Continuando — ' + conferencia.conferidas.length + ' já conferida(s)');
 }
 
 /* ================= CONTINUAR CONFERÊNCIA ================= */
