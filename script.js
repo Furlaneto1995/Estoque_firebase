@@ -5663,7 +5663,12 @@ async function juntarConferencias() {
     let todas = [];
     let docsRefs = [];
     let nomesUsuarios = [];
+    let mergedDoc = null;
     snapshot.forEach(doc => {
+      if (doc.id.startsWith('_merged_')) {
+        mergedDoc = doc;
+        return;
+      }
       if (doc.id.startsWith('_')) return;
       let d = doc.data();
       todas.push(d);
@@ -5671,7 +5676,22 @@ async function juntarConferencias() {
       if (d.usuario) nomesUsuarios.push(d.usuario);
     });
 
+    // Se não tem 2 usuários mas tem um _merged_ com resultado, aplica direto
     if (todas.length < 2) {
+      if (mergedDoc) {
+        let d = mergedDoc.data();
+        if (d.result) {
+          conferencia.conferidas = d.result.conferidas || [];
+          conferencia.extras = d.result.extras || [];
+          if (d.result.fotoEstoque) conferencia.fotoEstoque = d.result.fotoEstoque;
+          conferencia.ativa = false;
+          confSalvar();
+          finalizarConferencia();
+          mostrarToast('✅ Conferências já estavam unidas!');
+          if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+          return;
+        }
+      }
       mostrarToast('Aguardando o outro usuário', 'erro'); return;
     }
 
