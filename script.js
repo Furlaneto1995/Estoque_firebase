@@ -5240,6 +5240,16 @@ function continuarConferencia() {
   }
   conferencia.ativa = true;
   confJaFinalizada = false;
+  
+  // Limpa docs _merged_ da rodada anterior
+  limparConfListener();
+  if (confResultadoListener) { clearInterval(confResultadoListener); confResultadoListener = null; }
+  try {
+    db.collection('conferencias').get().then(snap => {
+      snap.forEach(doc => { if (doc.id.startsWith('_merged_')) doc.ref.delete(); });
+    }).catch(() => {});
+  } catch(e) {}
+  
   confSalvar();
   
   if (modoConferencia === 2 && nomeUsuarioConferencia) {
@@ -5693,6 +5703,12 @@ async function confFinalizarColaborativo() {
   }
 
   try {
+    // Limpa _merged_ antigos antes de finalizar (evita merge fantasma)
+    try {
+      let snap = await db.collection('conferencias').get();
+      snap.forEach(doc => { if (doc.id.startsWith('_merged_')) doc.ref.delete(); });
+    } catch(e) {}
+    
     // Marca como finalizada
     await db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).set({
   usuario: String(nomeUsuarioConferencia),
