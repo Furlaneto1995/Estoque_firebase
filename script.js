@@ -5193,7 +5193,6 @@ let confResultadoListener = null;
 
 function limparConfListener() {
   if (confListenerVar) {
-    // Pode ser onSnapshot() ou setInterval()
     if (typeof confListenerVar === 'number') {
       clearInterval(confListenerVar);
     } else {
@@ -5201,6 +5200,14 @@ function limparConfListener() {
     }
     confListenerVar = null;
   }
+  // Também limpa monitoramento de usuários
+  if (confUserNamesListener) {
+    clearInterval(confUserNamesListener);
+    confUserNamesListener = null;
+  }
+  // Limpa lista de usuários na tela
+  let container = document.getElementById('confUsuariosContainer');
+  if (container) { container.style.display = 'none'; container.innerHTML = ''; }
 }
 
 function continuarConferencia() {
@@ -5565,27 +5572,31 @@ function selecionarModoConferencia(modo) {
 let confUserNamesListener = null;
 
 function iniciarMonitoramentoUsuarios() {
-  if (confUserNamesListener) { try { confUserNamesListener(); } catch(e) {} confUserNamesListener = null; }
+  if (confUserNamesListener) { clearInterval(confUserNamesListener); confUserNamesListener = null; }
   if (modoConferencia !== 2 || !nomeUsuarioConferencia) return;
-  confUserNamesListener = db.collection('conferencias').onSnapshot(snap => {
-    let usuariosConectados = [];
-    snap.forEach(doc => {
-      if (doc.id.startsWith('_')) return;
-      let d = doc.data();
-      if (d.usuario && d.usuario.toLowerCase() !== nomeUsuarioConferencia.toLowerCase()) {
-        if (d.finalizada) usuariosConectados.push(d.usuario + ' ✅');
-        else usuariosConectados.push(d.usuario + ' 👤');
+  // Polling a cada 2s ao invés de onSnapshot
+  confUserNamesListener = setInterval(async function() {
+    try {
+      let snap = await db.collection('conferencias').get();
+      let usuariosConectados = [];
+      snap.forEach(doc => {
+        if (doc.id.startsWith('_')) return;
+        let d = doc.data();
+        if (d.usuario && d.usuario.toLowerCase() !== nomeUsuarioConferencia.toLowerCase()) {
+          if (d.finalizada) usuariosConectados.push(d.usuario + ' ✅');
+          else usuariosConectados.push(d.usuario + ' 👤');
+        }
+      });
+      let container = document.getElementById('confUsuariosContainer');
+      if (!container) return;
+      if (usuariosConectados.length > 0) {
+        container.style.display = 'flex';
+        container.innerHTML = '👥 <strong>Conferindo:</strong> ' + usuariosConectados.join(' | ');
+      } else {
+        container.style.display = 'none';
       }
-    });
-    let container = document.getElementById('confUsuariosContainer');
-    if (!container) return;
-    if (usuariosConectados.length > 0) {
-      container.style.display = 'flex';
-      container.innerHTML = '👥 <strong>Conferindo:</strong> ' + usuariosConectados.join(' | ');
-    } else {
-      container.style.display = 'none';
-    }
-  });
+    } catch(e) {}
+  }, 2000);
 }
 
 // Salva parcial no Firebase durante a conferência
