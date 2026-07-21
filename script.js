@@ -4795,10 +4795,23 @@ function abrirConferencia() {
 }
 
 function fecharConferencia() {
+  if (conferencia.ativa) {
+    if (!confirm('Deseja realmente fechar a conferência em andamento?')) return;
+  }
+  // Se tinha dados salvos (modo 2), limpa do Firebase
+  if (modoConferencia === 2 && nomeUsuarioConferencia) {
+    try {
+      db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).delete();
+      db.collection('conferencias').get().then(snap => {
+        snap.forEach(doc => { if (doc.id.startsWith('_merged_')) doc.ref.delete(); });
+      }).catch(() => {});
+    } catch(e) {}
+  }
 confJaFinalizada = false;
   limparConfListener();
   if (confUserNamesListener) { clearInterval(confUserNamesListener); confUserNamesListener = null; }
   if (confResultadoListener) { clearInterval(confResultadoListener); confResultadoListener = null; }
+  localStorage.removeItem('conferencia');
   document.getElementById('modalConferencia').classList.add('hidden');
   if (conferencia.leitor) {
     try { conferencia.leitor.stop(); conferencia.leitor.clear(); } catch (e) {}
@@ -4843,13 +4856,6 @@ function iniciarConferencia() {
   });
 
   if (foto.length === 0) { mostrarToast('Nenhuma bobina no estoque para conferir', 'erro'); return; }
-  // Limpa listeners e docs _merged_ antigos
-  limparConfListener();
-  try {
-    db.collection('conferencias').get().then(snap => {
-      snap.forEach(doc => { if (doc.id.startsWith('_merged_')) doc.ref.delete(); });
-    }).catch(() => {});
-  } catch(e) {}
   conferencia.ativa = true;
   conferencia.tipo = tipoSelecionado;
   conferencia.dataInicio = new Date().toLocaleString('pt-BR');
@@ -5217,18 +5223,12 @@ function continuarConferencia() {
   conferencia.ativa = true;
   confJaFinalizada = false;
   
-  // Limpa listeners e docs _merged_ da rodada anterior
+  // Só limpa listeners locais, NÃO mexe nos docs do Firebase
   limparConfListener();
   if (confResultadoListener) { clearInterval(confResultadoListener); confResultadoListener = null; }
-  if (confUserNamesListener) { try { confUserNamesListener(); } catch(e) {} confUserNamesListener = null; }
-  try {
-    db.collection('conferencias').get().then(snap => {
-      snap.forEach(doc => { if (doc.id.startsWith('_merged_')) doc.ref.delete(); });
-    }).catch(() => {});
-  } catch(e) {}
+  if (confUserNamesListener) { clearInterval(confUserNamesListener); confUserNamesListener = null; }
   
-  // Continua em modo SOLO — sem esperar o outro
-  let modoSalvo = modoConferencia;
+  // Modo SOLO — sem esperar o outro
   modoConferencia = 1;
   
   confSalvar();
@@ -5632,11 +5632,7 @@ async function confFinalizarColaborativo() {
   }
 
   try {
-    // Limpa _merged_ antigos
-    try {
-      let snap = await db.collection('conferencias').get();
-      snap.forEach(doc => { if (doc.id.startsWith('_merged_')) doc.ref.delete(); });
-    } catch(e) {}
+
     
     // Marca como finalizada no Firebase
     await db.collection('conferencias').doc(nomeUsuarioConferencia.toLowerCase()).set({
@@ -5746,15 +5742,8 @@ async function juntarConferencias() {
       }
     });
 
-    // Deleta APENAS docs que estão finalizados (preserva docs de quem ainda não finalizou)
-    for (let ref of docsRefs) {
-      try {
-        let docSnap = await ref.get();
-        if (docSnap.exists && docSnap.data().finalizada === true) {
-          await ref.delete();
-        }
-      } catch(e) {}
-    }
+    // NÃO deleta docs — só quem pode limpar é o "Fechar" com confirmação
+    console.log('Docs preservados — limpeza só no Fechar');
 
     confSalvar();
     finalizarConferencia();
