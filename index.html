@@ -807,14 +807,14 @@
 
 <!-- ================= MODAL SCANNER CONFERÊNCIA ================= -->
 <div id="modalScannerConf" class="modal-overlay hidden">
-  <div class="modal-saida-content" style="background:#ffffff; position:fixed; top:0; left:0; right:0; bottom:0; width:100% !important; height:100% !important; max-width:100% !important; max-height:100% !important; border-radius:0; display:flex; flex-direction:column;">
+  <div class="modal-saida-content" style="background:#ffffff; display:flex; flex-direction:column;">
     <div class="modal-saida-header">
       <h3 id="confScannerTitulo">📷 Escanear para conferência</h3>
       <button class="config-fechar" onclick="confFecharScanner()">✕</button>
     </div>
     
     <!-- CORPO: câmera em cima + histórico embaixo -->
-    <div style="display:flex; flex-direction:column; flex:1; min-height:0; gap:6px; padding:0 12px 12px;">
+    <div style="display:flex; flex-direction:column; flex:1; min-height:0; gap:6px; padding:0 8px 8px; overflow:hidden;">
       
       <!-- CÂMERA -->
       <div id="readerConf" style="width:100%; min-height:200px; border-radius:8px; overflow:hidden;"></div>
@@ -834,7 +834,7 @@
       <div id="confScannerLog" style="flex:1; min-height:0; overflow-y:auto; font-size:14px; color:#1e293b; border:1px solid #cbd5e1; border-radius:8px; padding:8px; background:#f8fafc;"></div>
     </div>
 
-    <button class="btn-modal btn-cancelar" onclick="confFecharScanner()" style="margin:0 12px 12px;">Finalizar</button>
+    <button class="btn-modal btn-cancelar" onclick="confFecharScanner()" style="margin:0 8px 8px; flex-shrink:0;">Finalizar</button>
   </div>
 </div>
 
@@ -957,5 +957,5 @@ atualizarCampoDataManualGerador();
   </div>
 </div>
 
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1cae3346f010d27',t:'MTc4NDMwODUxMw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1f5817b7f30031e',t:'MTc4NDc1NTM5OA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1cae3346f010d27',t:'MTc4NDMwODUxMw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
