@@ -9,41 +9,42 @@ function iniciarMonitoramentoColetor() {
   if (!input) return;
 
   input.value = "";
-  input.focus();
-
-  // Remove listeners antigos clonando e substituindo
-  const novoInput = input.cloneNode(true);
-  input.parentNode.replaceChild(novoInput, input);
   
-  // Foco automático
+  // Em vez de clonar (que causa teclado abrir), usa uma flag
+  // para evitar listeners duplicados
+  if (input._coletorInicializado) return;
+  input._coletorInicializado = true;
+  
+  // Foco automático sem abrir teclado (readonly trick)
   if (collectorFocusTimer) clearInterval(collectorFocusTimer);
   collectorFocusTimer = setInterval(() => {
     let modal = document.getElementById('modalScannerConf');
     if (!modal || modal.classList.contains('hidden') || !conferencia.coletorMode) return;
-    if (document.activeElement !== novoInput) {
-      try { novoInput.focus({ preventScroll: true }); } catch (e) { novoInput.focus(); }
+    if (document.activeElement !== input) {
+      input.readOnly = true;
+      input.focus({ preventScroll: true });
+      // Força fechamento do teclado
+      input.blur();
+      input.focus({ preventScroll: true });
+      setTimeout(() => { input.readOnly = false; }, 50);
     }
   }, 600);
 
-  // Handler único: processa após 300ms sem digitar (QR completo)
-  let cooldownColetor = false;
-  novoInput.addEventListener('input', function() {
-    if (collectorReadTimer) clearTimeout(collectorReadTimer);
-    collectorReadTimer = setTimeout(() => {
-      if (cooldownColetor) return;
-      cooldownColetor = true;
-      setTimeout(() => { cooldownColetor = false; }, 500);
-      processarLeituraColetorInput(novoInput);
-    }, 300);
-  });
-
-  // Enter processa imediatamente
-  novoInput.addEventListener('keydown', function(e) {
+  // Handler único: Enter processa imediatamente
+  input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
       if (collectorReadTimer) clearTimeout(collectorReadTimer);
-      processarLeituraColetorInput(novoInput);
+      processarLeituraColetorInput(input);
     }
+  });
+
+  // Input com timeout para QRs que não terminam com Enter
+  input.addEventListener('input', function() {
+    if (collectorReadTimer) clearTimeout(collectorReadTimer);
+    collectorReadTimer = setTimeout(() => {
+      processarLeituraColetorInput(input);
+    }, 300);
   });
 }
 
@@ -55,15 +56,23 @@ async function processarLeituraColetorInput(inputEl) {
   if (!val) return;
   let codigo = val.replace(/[\r\n\t]+/g, "").trim();
   if (codigo.length >= 2) {
-    // Processa e já atualiza o log + status imediatamente
     let resultado = await confProcessarLeitura(codigo);
     confLogScanner(resultado, codigo);
     
-    // Força atualização do status na tela principal (se estiver visível)
     if (conferencia.coletorMode) {
       let statusEl = document.getElementById('confScannerStatus');
       if (statusEl) statusEl.textContent = conferencia.conferidas.length + ' conferida(s)';
       confRenderizarLista();
+    }
+    
+    // Restaura foco SEM abrir teclado
+    if (conferencia.coletorMode) {
+      // truque: readonly focus + blur + focus
+      input.readOnly = true;
+      input.focus({ preventScroll: true });
+      input.blur();
+      input.focus({ preventScroll: true });
+      setTimeout(() => { input.readOnly = false; }, 50);
     }
   }
 }
@@ -5070,7 +5079,12 @@ async function confAbrirColetor() {
   if (collectorInput) {
     collectorInput.style.display = 'block';
     collectorInput.value = '';
-    collectorInput.focus();
+    // Foco sem teclado
+    collectorInput.readOnly = true;
+    collectorInput.focus({ preventScroll: true });
+    collectorInput.blur();
+    collectorInput.focus({ preventScroll: true });
+    setTimeout(() => { collectorInput.readOnly = false; }, 100);
   }
 
   document.getElementById('modalScannerConf').classList.remove('hidden');
@@ -5081,7 +5095,11 @@ async function confAbrirColetor() {
     let inp = document.getElementById('collectorInput');
     if (inp) {
       inp.value = '';
-      inp.focus();
+      inp.readOnly = true;
+      inp.focus({ preventScroll: true });
+      inp.blur();
+      inp.focus({ preventScroll: true });
+      setTimeout(() => { inp.readOnly = false; }, 100);
     }
   }, 100);
 }
