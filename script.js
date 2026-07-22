@@ -11,52 +11,60 @@ function iniciarMonitoramentoColetor() {
   input.value = "";
   input.focus();
 
+  // Remove listeners antigos clonando e substituindo
+  const novoInput = input.cloneNode(true);
+  input.parentNode.replaceChild(novoInput, input);
+  
+  // Foco automático
   if (collectorFocusTimer) clearInterval(collectorFocusTimer);
   collectorFocusTimer = setInterval(() => {
     let modal = document.getElementById('modalScannerConf');
     if (!modal || modal.classList.contains('hidden') || !conferencia.coletorMode) return;
-    if (document.activeElement !== input) {
-      try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+    if (document.activeElement !== novoInput) {
+      try { novoInput.focus({ preventScroll: true }); } catch (e) { novoInput.focus(); }
     }
   }, 600);
 
-  input.oninput = function() {
+  // Handler único: processa após 300ms sem digitar (QR completo)
+  let cooldownColetor = false;
+  novoInput.addEventListener('input', function() {
     if (collectorReadTimer) clearTimeout(collectorReadTimer);
     collectorReadTimer = setTimeout(() => {
-      processarLeituraColetorInput();
-    }, 150);
-  };
+      if (cooldownColetor) return;
+      cooldownColetor = true;
+      setTimeout(() => { cooldownColetor = false; }, 500);
+      processarLeituraColetorInput(novoInput);
+    }, 300);
+  });
 
-  input.onpaste = function() {
-    if (collectorReadTimer) clearTimeout(collectorReadTimer);
-    collectorReadTimer = setTimeout(() => {
-      processarLeituraColetorInput();
-    }, 50);
-  };
-
-  input.onchange = function() {
-    processarLeituraColetorInput();
-  };
-
-  input.onkeydown = function(e) {
+  // Enter processa imediatamente
+  novoInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
       if (collectorReadTimer) clearTimeout(collectorReadTimer);
-      processarLeituraColetorInput();
+      processarLeituraColetorInput(novoInput);
     }
-  };
+  });
 }
 
-async function processarLeituraColetorInput() {
-  const input = document.getElementById("collectorInput");
+async function processarLeituraColetorInput(inputEl) {
+  const input = inputEl || document.getElementById("collectorInput");
   if (!input) return;
   let val = input.value.trim();
   input.value = "";
   if (!val) return;
   let codigo = val.replace(/[\r\n\t]+/g, "").trim();
   if (codigo.length >= 2) {
+    // Processa e já atualiza o log + status imediatamente
     let resultado = await confProcessarLeitura(codigo);
     confLogScanner(resultado, codigo);
+    
+    // Força atualização do status na tela principal (se estiver visível)
+    if (conferencia.coletorMode) {
+      let statusEl = document.getElementById('confScannerStatus');
+      if (statusEl) statusEl.textContent = conferencia.conferidas.length + ' conferida(s)';
+      confRenderizarLista();
+    }
   }
 }
 
@@ -5756,53 +5764,5 @@ window.finalizarConferenciaSilenciosa = finalizarConferenciaSilenciosa;
 window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
 
-document.addEventListener("DOMContentLoaded", function() {
-  let inp = document.getElementById('collectorInput');
-  let coletorTimer = null;
-  if (inp) {
-    inp.addEventListener('input', function() {
-      if (coletorTimer) clearTimeout(coletorTimer);
-      let val = this.value;
-      if (val.includes('\n') || val.includes('\r') || val.length >= 8) {
-        let codigo = val.replace(/[\r\n]+/g, '').trim();
-        this.value = '';
-        if (codigo) {
-          confProcessarLeitura(codigo).then(res => confLogScanner(res, codigo));
-        }
-      } else {
-        coletorTimer = setTimeout(async () => {
-          let codigo = this.value.trim();
-          this.value = '';
-          if (codigo.length >= 3) {
-            let res = await confProcessarLeitura(codigo);
-            confLogScanner(res, codigo);
-          }
-        }, 250);
-      }
-    });
-
-    inp.addEventListener('keydown', async function(e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (coletorTimer) clearTimeout(coletorTimer);
-        let codigo = this.value.trim();
-        this.value = '';
-        if (!codigo) return;
-        let resultado = await confProcessarLeitura(codigo);
-        confLogScanner(resultado, codigo);
-      }
-    });
-  }
-
-  document.addEventListener('click', function() {
-    if (conferencia && conferencia.coletorMode) {
-      let modal = document.getElementById('modalScannerConf');
-      if (modal && !modal.classList.contains('hidden')) {
-        let inp = document.getElementById('collectorInput');
-        if (inp && document.activeElement !== inp) {
-          inp.focus();
-        }
-      }
-    }
-  });
-});
+// DOMContentLoaded consolidado no iniciarMonitoramentoColetor
+// O coletor é tratado exclusivamente pela função acima
