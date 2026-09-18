@@ -4965,6 +4965,7 @@ function abrirConferencia() {
     } catch (e) {}
   }
   conferencia = { ativa: false, tipo: 'tudo', dataInicio: null, fotoEstoque: [], conferidas: [], extras: [], scannerAberto: false, leitor: null, continuoMode: false };
+  confResetarTipos();
   mostrarTelaConf('confTelaIniciar');
   document.getElementById('modalConferencia').classList.remove('hidden');
 }
@@ -5009,8 +5010,52 @@ function mostrarTelaConf(telaId) {
   }
 }
 
+/* Sincroniza os checkboxes de tipo da conferência:
+   "Tudo" marca/desmarca todos; se todos os específicos forem
+   marcados, "Tudo" volta a ficar marcado. */
+function confTipoAlterado(cb) {
+  let especificos = Array.from(document.querySelectorAll('input[name="confTipo"]')).filter(i => i.value !== 'tudo');
+  let cbTudo = document.querySelector('input[name="confTipo"][value="tudo"]');
+  if (cb.value === 'tudo') {
+    especificos.forEach(i => { i.checked = cb.checked; });
+  } else if (cbTudo) {
+    cbTudo.checked = especificos.every(i => i.checked);
+  }
+  confDestacarTipos();
+}
+
+function confDestacarTipos() {
+  document.querySelectorAll('label.conf-tipo-item').forEach(label => {
+    let input = label.querySelector('input');
+    if (input && input.checked) label.classList.add('selecionado');
+    else label.classList.remove('selecionado');
+  });
+}
+
+function confResetarTipos() {
+  document.querySelectorAll('input[name="confTipo"]').forEach(i => { i.checked = true; });
+  confDestacarTipos();
+}
+
+// Texto bonito para os tipos da conferência ('tudo', string única ou array)
+function nomeTiposConferencia(tipo) {
+  if (!tipo || tipo === 'tudo') return 'Todos';
+  if (Array.isArray(tipo)) {
+    if (tipo.length === 0) return 'Todos';
+    return tipo.map(t => nomeCompletoTipo(t)).join(' + ');
+  }
+  return nomeCompletoTipo(tipo);
+}
+
 function iniciarConferencia() {
-  let tipoSelecionado = document.querySelector('input[name="confTipo"]:checked').value;
+  let tiposSelecionados = Array.from(document.querySelectorAll('input[name="confTipo"]:checked'))
+    .map(i => i.value).filter(v => v !== 'tudo');
+  let cbTudo = document.querySelector('input[name="confTipo"][value="tudo"]');
+  let selecionarTudo = (cbTudo && cbTudo.checked) || tiposSelecionados.length === 4;
+  if (!selecionarTudo && tiposSelecionados.length === 0) {
+    mostrarToast('Selecione pelo menos um tipo para conferir', 'erro');
+    return;
+  }
   let foto = [];
   historico.forEach(h => {
     if (h.tipo !== 'Entrada' || h._removidaEstoque || h.consumida) return;
@@ -5019,7 +5064,7 @@ function iniciarConferencia() {
     let item = partes[0], versao = partes[1];
     let tipoItem = '';
     Object.keys(banco).forEach(t => { if (banco[t] && banco[t][item]) tipoItem = t; });
-    if (tipoSelecionado !== 'tudo' && tipoItem !== tipoSelecionado) return;
+    if (!selecionarTudo && !tiposSelecionados.includes(tipoItem)) return;
     if (!estoque[h.item] || estoque[h.item] <= 0) return;
     let tamanho = '';
     if (banco[tipoItem] && banco[tipoItem][item] && banco[tipoItem][item][versao]) tamanho = banco[tipoItem][item][versao].tamanho;
@@ -5032,7 +5077,7 @@ function iniciarConferencia() {
 
   if (foto.length === 0) { mostrarToast('Nenhuma bobina no estoque para conferir', 'erro'); return; }
   conferencia.ativa = true;
-  conferencia.tipo = tipoSelecionado;
+  conferencia.tipo = selecionarTudo ? 'tudo' : tiposSelecionados;
   conferencia.dataInicio = new Date().toLocaleString('pt-BR');
   conferencia.fotoEstoque = foto;
   conferencia.conferidas = [];
@@ -5466,7 +5511,7 @@ function confExportarResultado() {
   linhas.push(['CONFERÊNCIA DE INVENTÁRIO', '', '', '', '']);
   linhas.push(['Data início:', conferencia.dataInicio, '', '', '']);
   linhas.push(['Data fim:', new Date().toLocaleString('pt-BR'), '', '', '']);
-  linhas.push(['Tipo:', conferencia.tipo === 'tudo' ? 'Todos' : nomeCompletoTipo(conferencia.tipo), '', '', '']);
+  linhas.push(['Tipo:', nomeTiposConferencia(conferencia.tipo), '', '', '']);
   linhas.push(['', '', '', '', '']);
   linhas.push(['RESUMO', '', '', '', '']);
   linhas.push(['Conferidas:', conferidas.length, '', '', '']);
@@ -5929,6 +5974,7 @@ window.abrirConferencia = abrirConferencia;
 window.fecharConferencia = fecharConferencia;
 window.continuarConferencia = continuarConferencia;
 window.iniciarConferencia = iniciarConferencia;
+window.confTipoAlterado = confTipoAlterado;
 window.pausarConferencia = pausarConferencia;
 window.confMarcarManual = confMarcarManual;
 window.confDesmarcar = confDesmarcar;
