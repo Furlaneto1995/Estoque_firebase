@@ -1048,6 +1048,18 @@ body.dark-mode .gerador-card-tipo.tipo-fundo { background: #2e1065; color: #c4b5
 
 .btn-cancelar-opcao { background: #f1f5f9; color: #64748b; text-align: center; }
 
+/* ================= CONFERÊNCIA — SELEÇÃO DE TIPOS ================= */
+
+.conf-tipo-item {
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.conf-tipo-item.selecionado {
+  background: #eff6ff !important;
+  border-color: #1e3a8a !important;
+  font-weight: 600;
+}
+
 /* ================= MODAL SAÍDA ================= */
 
 .modal-saida-content {
@@ -1637,6 +1649,10 @@ body.dark-mode .btn-desfazer-opcao { background: #1f3a2a !important; color: #86e
 body.dark-mode .btn-excluir-opcao  { background: #3f1d1d !important; color: #fca5a5 !important; }
 
 body.dark-mode .btn-cancelar-opcao { background: #334155 !important; color: #cbd5e1 !important; }
+
+body.dark-mode .conf-tipo-item { background: #1e293b !important; border-color: #334155 !important; color: #e2e8f0; }
+
+body.dark-mode .conf-tipo-item.selecionado { background: #1e3a5f !important; border-color: #3b82f6 !important; color: #ffffff; }
 
 body.dark-mode .modal-saida-tabela          { border-color: #475569; }
 
