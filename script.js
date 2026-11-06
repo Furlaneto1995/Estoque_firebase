@@ -1403,11 +1403,43 @@ function alternarModoVisualizacao() {
   botao.textContent = body.classList.contains("modo-visualizacao") ? "✕" : "⛶";
 }
 
+/* ================= SERVICE WORKER (atualização automática) ================= */
+/* Com o sw.js novo (rede primeiro, sem cache HTTP) o app pega a versão
+   nova sozinho — não precisa mais limpar cache dos aparelhos. */
+
 if ('serviceWorker' in navigator && (location.protocol === 'http:' || location.protocol === 'https:')) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('SW registrado:', reg))
-      .catch(err => console.error('Erro SW:', err));
+  let jaTinhaSW = !!navigator.serviceWorker.controller;
+  let recarregando = false;
+
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (!jaTinhaSW) { jaTinhaSW = true; return; } // primeira instalação: não recarrega
+    if (recarregando) return;
+
+    // Não recarrega no meio de uma conferência
+    if (typeof conferencia !== 'undefined' && conferencia && conferencia.ativa) {
+      if (typeof mostrarToast === 'function') {
+        mostrarToast('🔄 Versão nova disponível — finalize a conferência e reabra o app');
+      }
+      return;
+    }
+
+    recarregando = true;
+    location.reload();
+  });
+
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then(function (reg) {
+        console.log('SW registrado:', reg.scope);
+
+        // procura versão nova agora, a cada 30 min e ao voltar pro app
+        reg.update().catch(function () {});
+        setInterval(function () { reg.update().catch(function () {}); }, 30 * 60 * 1000);
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') reg.update().catch(function () {});
+        });
+      })
+      .catch(function (err) { console.error('Erro SW:', err); });
   });
 }
 
