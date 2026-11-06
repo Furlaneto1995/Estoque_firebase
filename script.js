@@ -135,16 +135,6 @@ function normalizarTexto(texto){
     .toLowerCase();
 }
 
-// Converte "18/09/2026, 10:58:16" (ou "18/09/2026<br>10:58:16")
-// para "2026-09-18", formato comparável com o input[type=date].
-// Ignora a parte da hora e completa dia/mês com zero à esquerda.
-function converterDataParaISO(dataStr) {
-  let parteData = String(dataStr || '').replace(/<br>/g, ", ").split(",")[0];
-  let partes = parteData.trim().split("/");
-  if (partes.length < 3) return '';
-  return partes[2].trim() + '-' + partes[1].trim().padStart(2, '0') + '-' + partes[0].trim().padStart(2, '0');
-}
-
 function descobrirTipoPorItem(item) {
   let tipoEncontrado = "";
   Object.keys(banco).forEach(tipo => {
@@ -839,7 +829,7 @@ function atualizarHistorico(){
     }
     let textoCompleto = normalizarTexto(`${d.data} ${termosMovimento.join(' ')} ${nomeBonitoTipo(d.tipo)} ${d.item} ${d.versao} ${d.tamanho} ${d.qtd}`);
     let matchesBusca = textoCompleto.includes(termo);
-    let dataISO = converterDataParaISO(d.original.data);
+    let dataISO = d.data.split(",")[0].split("/").reverse().join("-");
     let matchesPeriodo = true;
     if(dataInicio && dataInicio.value) matchesPeriodo = matchesPeriodo && (dataISO >= dataInicio.value);
     if(dataFim && dataFim.value) matchesPeriodo = matchesPeriodo && (dataISO <= dataFim.value);
@@ -1070,7 +1060,7 @@ function exportarHistorico(dataInicioP, dataFimP){
   const wb = XLSX.utils.book_new();
   let dadosHistorico = historico.filter(h => {
     if(!dataInicioP && !dataFimP) return true;
-    let dataISO = converterDataParaISO(h.data);
+    let dataISO = h.data.split(",")[0].split("/").reverse().join("-");
     return (!dataInicioP || dataISO >= dataInicioP) && (!dataFimP || dataISO <= dataFimP);
   }).map(h => {
     let partes = h.item.split(" - V");
@@ -1181,7 +1171,7 @@ function exportarAmbos(dataInicioP, dataFimP) {
 
   let dadosHistorico = historico.filter(h => {
     if (!dataInicioP && !dataFimP) return true;
-    let dataISO = converterDataParaISO(h.data);
+    let dataISO = h.data.split(",")[0].split("/").reverse().join("-");
     return (!dataInicioP || dataISO >= dataInicioP) && (!dataFimP || dataISO <= dataFimP);
   }).map(h => {
     let partes = h.item.split(" - V");
@@ -1368,7 +1358,7 @@ function exportarHistoricoPDF(dataInicioP, dataFimP) {
 
   let dadosHistorico = historico.filter(h => {
     if (!dataInicioP && !dataFimP) return true;
-    let dataISO = converterDataParaISO(h.data);
+    let dataISO = h.data.split(",")[0].split("/").reverse().join("-");
     return (!dataInicioP || dataISO >= dataInicioP) && (!dataFimP || dataISO <= dataFimP);
   }).map(h => {
     let partes = h.item.split(" - V");
@@ -2991,30 +2981,6 @@ function abrirAcoesHistorico(index) {
   historicoSelecionadoIndex = index;
   document.getElementById("modalHistoricoTitulo").textContent = reg.item || "Ações do registro";
   document.getElementById("btnHistoricoQR").style.display = (reg.tipo === "Entrada") ? "block" : "none";
-
-  // ===== Opções de desfazer (aparecem conforme o tipo do registro) =====
-  let btnDesfazerExclusao = document.getElementById("btnHistoricoDesfazerExclusao");
-  let btnDesfazerConsumo = document.getElementById("btnHistoricoDesfazerConsumo");
-  let btnDesfazerEntrada = document.getElementById("btnHistoricoDesfazerEntrada");
-
-  // Exclusão: registro de Exclusão, saída marcada como excluída,
-  // ou entrada com status (excluída)
-  let mostrarDesfazerExclusao = (reg.tipo === "Exclusão") || reg.excluida ||
-    (reg.tipo === "Entrada" && reg._removidaEstoque);
-
-  // Consumo: registro de Consumo, saída/bobina marcada como consumida
-  let mostrarDesfazerConsumo = !mostrarDesfazerExclusao &&
-    reg.tipo !== "Consumo parcial" &&
-    (reg.tipo === "Consumo" || reg.consumida);
-
-  // Entrada ativa: ainda não consumida nem excluída
-  let mostrarDesfazerEntrada = (reg.tipo === "Entrada") &&
-    !reg.consumida && !reg._removidaEstoque && !reg.excluida;
-
-  if (btnDesfazerExclusao) btnDesfazerExclusao.style.display = mostrarDesfazerExclusao ? "block" : "none";
-  if (btnDesfazerConsumo) btnDesfazerConsumo.style.display = mostrarDesfazerConsumo ? "block" : "none";
-  if (btnDesfazerEntrada) btnDesfazerEntrada.style.display = mostrarDesfazerEntrada ? "block" : "none";
-
   document.getElementById("modalHistoricoAcoes").classList.remove("hidden");
 }
 
@@ -3035,140 +3001,6 @@ function confirmarRemoverHistoricoSelecionado() {
   let idx = historicoSelecionadoIndex;
   fecharModalHistoricoAcoes();
   removerHistorico(idx);
-}
-
-/* ================= DESFAZER AÇÕES PELO HISTÓRICO ================= */
-
-// Localiza a entrada (bobina) referenciada por um registro de
-// Consumo/Exclusão. Se a entrada não existir mais no histórico
-// (ex.: foi removida manualmente), ela é recriada para permitir
-// restaurar a bobina ao estoque.
-function localizarEntradaReferenciada(reg) {
-  let refId = reg.refEntradaId || reg.bobinaOriginalId || null;
-  if (refId) {
-    let encontrada = historico.find(h => h && h.id === refId && h.tipo === "Entrada");
-    if (encontrada) return encontrada;
-  }
-  let nova = {
-    id: refId || crypto.randomUUID(),
-    data: reg.refEntradaData || reg.data || new Date().toLocaleString(),
-    tipo: "Entrada",
-    item: reg.item,
-    qtd: reg.qtd
-  };
-  historico.unshift(nova);
-  return nova;
-}
-
-function desfazerExclusaoDoHistorico() {
-  if (historicoSelecionadoIndex === null) return;
-  let reg = historico[historicoSelecionadoIndex];
-  fecharModalHistoricoAcoes();
-  if (!reg) return;
-
-  let entrada = (reg.tipo === "Entrada") ? reg : localizarEntradaReferenciada(reg);
-  if (!entrada) { mostrarToast("Não foi possível desfazer a exclusão", "erro"); return; }
-
-  salvarEstadoParaDesfazer();
-
-  entrada._removidaEstoque = false;
-  delete entrada.excluida;
-
-  // Devolve o peso ao estoque apenas se a bobina não estava consumida
-  if (!entrada.consumida) {
-    estoque[entrada.item] = (estoque[entrada.item] || 0) + entrada.qtd;
-    estoque[entrada.item + "_qtd"] = (estoque[entrada.item + "_qtd"] || 0) + 1;
-  }
-
-  // Remove o registro de Exclusão ligado a esta entrada
-  if (reg !== entrada) {
-    let i = historico.indexOf(reg);
-    if (i >= 0) historico.splice(i, 1);
-  } else {
-    for (let i = historico.length - 1; i >= 0; i--) {
-      if (historico[i].tipo === "Exclusão" && historico[i].refEntradaId === entrada.id) {
-        historico.splice(i, 1);
-        break;
-      }
-    }
-  }
-
-  salvarDados();
-  atualizarTudo();
-  if (navigator.vibrate) navigator.vibrate([50]);
-  mostrarToast("Exclusão desfeita");
-}
-
-function desfazerConsumoDoHistorico() {
-  if (historicoSelecionadoIndex === null) return;
-  let reg = historico[historicoSelecionadoIndex];
-  fecharModalHistoricoAcoes();
-  if (!reg) return;
-
-  let entrada = (reg.tipo === "Entrada") ? reg : localizarEntradaReferenciada(reg);
-  if (!entrada) { mostrarToast("Não foi possível desfazer o consumo", "erro"); return; }
-
-  salvarEstadoParaDesfazer();
-
-  entrada.consumida = false;
-
-  // Devolve o peso ao estoque apenas se a bobina não foi excluída
-  if (!entrada._removidaEstoque) {
-    estoque[entrada.item] = (estoque[entrada.item] || 0) + entrada.qtd;
-    estoque[entrada.item + "_qtd"] = (estoque[entrada.item + "_qtd"] || 0) + 1;
-  }
-
-  // Remove o registro de Consumo ligado a esta entrada
-  if (reg !== entrada) {
-    let i = historico.indexOf(reg);
-    if (i >= 0) historico.splice(i, 1);
-  } else {
-    for (let i = historico.length - 1; i >= 0; i--) {
-      if (historico[i].tipo === "Consumo" && historico[i].refEntradaId === entrada.id) {
-        historico.splice(i, 1);
-        break;
-      }
-    }
-  }
-
-  salvarDados();
-  atualizarTudo();
-  if (navigator.vibrate) navigator.vibrate([50]);
-  mostrarToast("Consumo desfeito");
-}
-
-function desfazerEntradaDoHistorico() {
-  if (historicoSelecionadoIndex === null) return;
-  let reg = historico[historicoSelecionadoIndex];
-  fecharModalHistoricoAcoes();
-  if (!reg || reg.tipo !== "Entrada" || reg.consumida || reg._removidaEstoque) return;
-
-  salvarEstadoParaDesfazer();
-
-  let chave = reg.item;
-  if (estoque[chave]) {
-    estoque[chave] -= reg.qtd;
-    if (estoque[chave + "_qtd"] > 0) estoque[chave + "_qtd"]--;
-    if (estoque[chave] <= 0) { delete estoque[chave]; delete estoque[chave + "_qtd"]; }
-  }
-
-  // Marca como excluída e registra a Exclusão — mesmo padrão usado
-  // em "Excluir bobina", assim dá para refazer depois se precisar
-  reg._removidaEstoque = true;
-  historico.push({
-    id: crypto.randomUUID(),
-    data: new Date().toLocaleString(),
-    tipo: "Exclusão",
-    item: chave,
-    qtd: reg.qtd,
-    refEntradaId: reg.id,
-    refEntradaData: reg.data
-  });
-
-  salvarDados();
-  atualizarTudo();
-  if (navigator.vibrate) navigator.vibrate([50]);
-  mostrarToast("Entrada desfeita");
 }
 
 function fecharModalQR() {
@@ -3715,7 +3547,7 @@ function coletarBobinasParaQR(dataInicioP, dataFimP) {
   historico.forEach((h, index) => {
     if (h.tipo !== "Entrada" || h._removidaEstoque || h.consumida) return;
     if (dataInicioP || dataFimP) {
-      let dataISO = converterDataParaISO(h.data);
+      let dataISO = h.data.split(",")[0].trim().split("/").reverse().join("-");
       if (dataInicioP && dataISO < dataInicioP) return;
       if (dataFimP && dataISO > dataFimP) return;
     }
@@ -3939,8 +3771,15 @@ function selecionarTipoExport(card) {
     formatosNormal.querySelectorAll('.export-formato-btn').forEach(b => b.classList.remove('selecionado'));
     formatosNormal.querySelector('[data-formato="excel"]').classList.add('selecionado');
   }
-  if (exportTipoSelecionado === 'estoque') etapaPeriodo.classList.add('hidden');
-  else etapaPeriodo.classList.remove('hidden');
+  if (exportTipoSelecionado === 'estoque' || exportTipoSelecionado === 'conferencia') {
+    etapaPeriodo.classList.add('hidden');
+    exportUsarPeriodo = false;
+    let periodoDatas = document.getElementById('exportPeriodoDatas');
+    if (periodoDatas) periodoDatas.classList.add('hidden');
+    let toggles = document.querySelectorAll('.export-periodo-toggle button');
+    toggles.forEach(b => b.classList.remove('selecionado'));
+    if (toggles[0]) toggles[0].classList.add('selecionado');
+  } else etapaPeriodo.classList.remove('hidden');
 }
 
 function selecionarFormato(btn) {
@@ -3987,7 +3826,7 @@ function resetarMenuExportar() {
 
 function executarExportacaoNova() {
   let dataInicioExp = null, dataFimExp = null;
-  if (exportUsarPeriodo) {
+  if (exportUsarPeriodo && exportTipoSelecionado !== 'conferencia') {
     dataInicioExp = document.getElementById('exportDataInicio').value;
     dataFimExp = document.getElementById('exportDataFim').value;
     if (!dataInicioExp && !dataFimExp) { mostrarToast('Informe pelo menos uma data', 'erro'); return; }
@@ -3998,10 +3837,19 @@ function executarExportacaoNova() {
   if (exportTipoSelecionado === 'historico' || exportTipoSelecionado === 'ambos') {
     let dadosFiltrados = historico.filter(h => {
       if (!dataInicioExp && !dataFimExp) return true;
-      let dataISO = converterDataParaISO(h.data);
+      let dataISO = h.data.split(',')[0].trim().split('/').reverse().join('-');
       return (!dataInicioExp || dataISO >= dataInicioExp) && (!dataFimExp || dataISO <= dataFimExp);
     });
     if (dadosFiltrados.length === 0) { mostrarToast('Nenhum registro no período', 'erro'); return; }
+  }
+  if (exportTipoSelecionado === 'conferencia') {
+    let dadosConf = obterConferenciaParaExport();
+    if (!dadosConf) { mostrarToast('Nenhuma conferência para exportar', 'erro'); return; }
+    let parcial = (dadosConf.ativa === true);
+    if (exportFormatoSelecionado === 'pdf') confExportarPDFConferencia(parcial, dadosConf);
+    else confExportarResultado(parcial, dadosConf);
+    fecharModalConfig();
+    return;
   }
   if (exportTipoSelecionado === 'qrcodes') {
     let bobinas = coletarBobinasParaQR(dataInicioExp, dataFimExp);
@@ -4975,7 +4823,6 @@ function abrirConferencia() {
     } catch (e) {}
   }
   conferencia = { ativa: false, tipo: 'tudo', dataInicio: null, fotoEstoque: [], conferidas: [], extras: [], scannerAberto: false, leitor: null, continuoMode: false };
-  confResetarTipos();
   mostrarTelaConf('confTelaIniciar');
   document.getElementById('modalConferencia').classList.remove('hidden');
 }
@@ -5020,52 +4867,8 @@ function mostrarTelaConf(telaId) {
   }
 }
 
-/* Sincroniza os checkboxes de tipo da conferência:
-   "Tudo" marca/desmarca todos; se todos os específicos forem
-   marcados, "Tudo" volta a ficar marcado. */
-function confTipoAlterado(cb) {
-  let especificos = Array.from(document.querySelectorAll('input[name="confTipo"]')).filter(i => i.value !== 'tudo');
-  let cbTudo = document.querySelector('input[name="confTipo"][value="tudo"]');
-  if (cb.value === 'tudo') {
-    especificos.forEach(i => { i.checked = cb.checked; });
-  } else if (cbTudo) {
-    cbTudo.checked = especificos.every(i => i.checked);
-  }
-  confDestacarTipos();
-}
-
-function confDestacarTipos() {
-  document.querySelectorAll('label.conf-tipo-item').forEach(label => {
-    let input = label.querySelector('input');
-    if (input && input.checked) label.classList.add('selecionado');
-    else label.classList.remove('selecionado');
-  });
-}
-
-function confResetarTipos() {
-  document.querySelectorAll('input[name="confTipo"]').forEach(i => { i.checked = true; });
-  confDestacarTipos();
-}
-
-// Texto bonito para os tipos da conferência ('tudo', string única ou array)
-function nomeTiposConferencia(tipo) {
-  if (!tipo || tipo === 'tudo') return 'Todos';
-  if (Array.isArray(tipo)) {
-    if (tipo.length === 0) return 'Todos';
-    return tipo.map(t => nomeCompletoTipo(t)).join(' + ');
-  }
-  return nomeCompletoTipo(tipo);
-}
-
 function iniciarConferencia() {
-  let tiposSelecionados = Array.from(document.querySelectorAll('input[name="confTipo"]:checked'))
-    .map(i => i.value).filter(v => v !== 'tudo');
-  let cbTudo = document.querySelector('input[name="confTipo"][value="tudo"]');
-  let selecionarTudo = (cbTudo && cbTudo.checked) || tiposSelecionados.length === 4;
-  if (!selecionarTudo && tiposSelecionados.length === 0) {
-    mostrarToast('Selecione pelo menos um tipo para conferir', 'erro');
-    return;
-  }
+  let tipoSelecionado = document.querySelector('input[name="confTipo"]:checked').value;
   let foto = [];
   historico.forEach(h => {
     if (h.tipo !== 'Entrada' || h._removidaEstoque || h.consumida) return;
@@ -5074,7 +4877,7 @@ function iniciarConferencia() {
     let item = partes[0], versao = partes[1];
     let tipoItem = '';
     Object.keys(banco).forEach(t => { if (banco[t] && banco[t][item]) tipoItem = t; });
-    if (!selecionarTudo && !tiposSelecionados.includes(tipoItem)) return;
+    if (tipoSelecionado !== 'tudo' && tipoItem !== tipoSelecionado) return;
     if (!estoque[h.item] || estoque[h.item] <= 0) return;
     let tamanho = '';
     if (banco[tipoItem] && banco[tipoItem][item] && banco[tipoItem][item][versao]) tamanho = banco[tipoItem][item][versao].tamanho;
@@ -5087,7 +4890,7 @@ function iniciarConferencia() {
 
   if (foto.length === 0) { mostrarToast('Nenhuma bobina no estoque para conferir', 'erro'); return; }
   conferencia.ativa = true;
-  conferencia.tipo = selecionarTudo ? 'tudo' : tiposSelecionados;
+  conferencia.tipo = tipoSelecionado;
   conferencia.dataInicio = new Date().toLocaleString('pt-BR');
   conferencia.fotoEstoque = foto;
   conferencia.conferidas = [];
@@ -5125,7 +4928,7 @@ function confRenderizarLista() {
 
   let html = '';
 
-  if (conferencia.extras.length > 0) {
+  if ((dados.extras || []).length > 0) {
     html += '<div style="font-size:12px;font-weight:700;color:#ca8a04;padding:4px 0;">⚠️ Extras (' + conferencia.extras.length + ')</div>';
     conferencia.extras.forEach((extra, idx) => {
       let textoBusca = normalizarTexto(extra.item + ' ' + extra.versao + ' ' + extra.peso);
@@ -5513,20 +5316,23 @@ function confAjustarEstoque() {
   mostrarToast('Estoque ajustado pela conferência');
 }
 
-function confExportarResultado() {
-  let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
-  let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
+function confExportarResultado(parcial, dados) {
+  parcial = (parcial === true);
+  dados = dados || conferencia;
+  let conferidas = dados.fotoEstoque.filter(b => dados.conferidas.includes(b.id));
+  let pendentes = dados.fotoEstoque.filter(b => !dados.conferidas.includes(b.id));
   const wb = XLSX.utils.book_new();
   let linhas = [];
-  linhas.push(['CONFERÊNCIA DE INVENTÁRIO', '', '', '', '']);
-  linhas.push(['Data início:', conferencia.dataInicio, '', '', '']);
-  linhas.push(['Data fim:', new Date().toLocaleString('pt-BR'), '', '', '']);
-  linhas.push(['Tipo:', nomeTiposConferencia(conferencia.tipo), '', '', '']);
+  linhas.push([parcial ? 'CONFERÊNCIA DE INVENTÁRIO (PARCIAL — EM ANDAMENTO)' : 'CONFERÊNCIA DE INVENTÁRIO', '', '', '', '']);
+  linhas.push(['Data início:', dados.dataInicio, '', '', '']);
+  linhas.push(['Data fim:', parcial ? 'em andamento' : new Date().toLocaleString('pt-BR'), '', '', '']);
+  if (parcial) linhas.push(['Exportado em:', new Date().toLocaleString('pt-BR'), '', '', '']);
+  linhas.push(['Tipo:', dados.tipo === 'tudo' ? 'Todos' : nomeCompletoTipo(dados.tipo), '', '', '']);
   linhas.push(['', '', '', '', '']);
   linhas.push(['RESUMO', '', '', '', '']);
   linhas.push(['Conferidas:', conferidas.length, '', '', '']);
   linhas.push(['Não encontradas:', pendentes.length, '', '', '']);
-  linhas.push(['Extras:', conferencia.extras.length, '', '', '']);
+  linhas.push(['Extras:', (dados.extras || []).length, '', '', '']);
   linhas.push(['', '', '', '', '']);
   if (conferidas.length > 0) {
     linhas.push(['CONFERIDAS', '', '', '', '']);
@@ -5543,13 +5349,97 @@ function confExportarResultado() {
   if (conferencia.extras.length > 0) {
     linhas.push(['EXTRAS', '', '', '', '']);
     linhas.push(['Item', 'Versão', 'Medidas', 'Kg', 'Status']);
-    conferencia.extras.forEach(b => linhas.push([b.item, b.versao, b.tamanho || '', Math.round(b.peso), 'Extra']));
+    dados.extras.forEach(b => linhas.push([b.item, b.versao, b.tamanho || '', Math.round(b.peso), 'Extra']));
   }
   const ws = XLSX.utils.aoa_to_sheet(linhas);
   ws['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 14 }];
   XLSX.utils.book_append_sheet(wb, ws, 'Conferência');
-  XLSX.writeFile(wb, 'Conferencia_' + getTimestamp() + '.xlsx');
-  mostrarToast('Relatório exportado');
+  XLSX.writeFile(wb, (parcial ? 'Conferencia_PARCIAL_' : 'Conferencia_') + getTimestamp() + '.xlsx');
+  mostrarToast(parcial ? 'Relatório parcial exportado' : 'Relatório exportado');
+}
+
+/* Exporta a conferência mesmo antes de finalizar (relatório parcial) */
+function confExportarParcial() {
+  let dados = obterConferenciaParaExport();
+  if (!dados) { mostrarToast('Nenhuma conferência encontrada', 'erro'); return; }
+  confExportarResultado(dados.ativa === true, dados);
+}
+
+/* Busca a conferência no localStorage (funciona mesmo com a conferência fechada) */
+function obterConferenciaParaExport() {
+  let salva = null;
+  try {
+    let txt = localStorage.getItem('conferencia');
+    if (txt) salva = JSON.parse(txt);
+  } catch (e) { salva = null; }
+  if (salva && Array.isArray(salva.fotoEstoque) && salva.fotoEstoque.length > 0) {
+    if (!Array.isArray(salva.conferidas)) salva.conferidas = [];
+    if (!Array.isArray(salva.extras)) salva.extras = [];
+    return salva;
+  }
+  if (conferencia && Array.isArray(conferencia.fotoEstoque) && conferencia.fotoEstoque.length > 0) return conferencia;
+  return null;
+}
+
+/* PDF da conferência (parcial ou final) */
+function confExportarPDFConferencia(parcial, dados) {
+  dados = dados || conferencia;
+  parcial = (parcial === true);
+  if (typeof window.jspdf === 'undefined') { mostrarToast('PDF indisponível', 'erro'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape' });
+  const pageW = doc.internal.pageSize.width;
+  const conferidas = dados.fotoEstoque.filter(b => dados.conferidas.includes(b.id));
+  const pendentes = dados.fotoEstoque.filter(b => !dados.conferidas.includes(b.id));
+  const extras = dados.extras || [];
+  if (conferidas.length === 0 && extras.length === 0) { mostrarToast('Nada para exportar', 'erro'); return; }
+
+  doc.setFillColor(30, 58, 138);
+  doc.rect(0, 0, pageW, 18, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(parcial ? 'Conferência de Estoques — PARCIAL' : 'Conferência de Estoques', 14, 12);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Gerado em: ' + new Date().toLocaleString('pt-BR'), pageW - 14, 12, { align: 'right' });
+  doc.setTextColor(0, 0, 0);
+
+  doc.setFontSize(9);
+  doc.text('Início: ' + (dados.dataInicio || '—') +
+            '   |   Tipo: ' + (dados.tipo === 'tudo' ? 'Todos' : nomeCompletoTipo(dados.tipo)) +
+            '   |   Conferidas: ' + conferidas.length +
+            '   |   Não encontradas: ' + pendentes.length +
+            '   |   Extras: ' + extras.length, 14, 25);
+
+  let body = [];
+  conferidas.forEach(b => body.push(['Conferida', b.item, b.versao, b.tamanho || '', Math.round(b.peso)]));
+  pendentes.forEach(b => body.push(['Não encontrada', b.item, b.versao, b.tamanho || '', Math.round(b.peso)]));
+  extras.forEach(b => body.push(['Extra', b.item, b.versao, b.tamanho || '', Math.round(b.peso)]));
+
+  doc.autoTable({
+    startY: 29,
+    head: [['Status', 'Item', 'Versão', 'Medidas', 'Kg']],
+    body: body,
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [240, 244, 255] },
+    columnStyles: {
+      0: { cellWidth: 34 }, 1: { cellWidth: 40 }, 2: { cellWidth: 20 },
+      3: { cellWidth: 34 }, 4: { cellWidth: 20 }
+    }
+  });
+
+  let totalPages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7);
+    doc.setTextColor(180, 180, 180);
+    doc.text('Página ' + p + '/' + totalPages, pageW / 2, doc.internal.pageSize.height - 5, { align: 'center' });
+  }
+
+  doc.save('Conferencia_' + (parcial ? 'PARCIAL_' : '') + getTimestamp() + '.pdf');
+  mostrarToast(parcial ? 'PDF parcial exportado' : 'PDF exportado');
 }
 
 /* ================= FIREBASE MANUAL (SALVAR / SINCRONIZAR) ================= */
@@ -5716,9 +5606,6 @@ window.abrirAcoesHistorico = abrirAcoesHistorico;
 window.fecharModalHistoricoAcoes = fecharModalHistoricoAcoes;
 window.abrirQRDoHistorico = abrirQRDoHistorico;
 window.confirmarRemoverHistoricoSelecionado = confirmarRemoverHistoricoSelecionado;
-window.desfazerExclusaoDoHistorico = desfazerExclusaoDoHistorico;
-window.desfazerConsumoDoHistorico = desfazerConsumoDoHistorico;
-window.desfazerEntradaDoHistorico = desfazerEntradaDoHistorico;
 window.abrirScannerContinuo = abrirScannerContinuo;
 window.fecharScannerContinuo = fecharScannerContinuo;
 window.geradorFecharFinal = geradorFecharFinal;
@@ -5984,7 +5871,6 @@ window.abrirConferencia = abrirConferencia;
 window.fecharConferencia = fecharConferencia;
 window.continuarConferencia = continuarConferencia;
 window.iniciarConferencia = iniciarConferencia;
-window.confTipoAlterado = confTipoAlterado;
 window.pausarConferencia = pausarConferencia;
 window.confMarcarManual = confMarcarManual;
 window.confDesmarcar = confDesmarcar;
@@ -5998,6 +5884,9 @@ window.finalizarConferencia = finalizarConferencia;
 window.finalizarConferenciaSilenciosa = finalizarConferenciaSilenciosa;
 window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
+window.confExportarParcial = confExportarParcial;
+window.confExportarPDFConferencia = confExportarPDFConferencia;
+window.obterConferenciaParaExport = obterConferenciaParaExport;
 
 // DOMContentLoaded consolidado no iniciarMonitoramentoColetor
 // O coletor é tratado exclusivamente pela função acima
