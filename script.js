@@ -1414,10 +1414,33 @@ function alternarModoVisualizacao() {
 }
 
 if ('serviceWorker' in navigator && (location.protocol === 'http:' || location.protocol === 'https:')) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('SW registrado:', reg))
-      .catch(err => console.error('Erro SW:', err));
+  let jaTinhaSW = !!navigator.serviceWorker.controller;
+  let recarregando = false;
+
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (!jaTinhaSW) { jaTinhaSW = true; return; }
+    if (recarregando) return;
+    if (typeof conferencia !== 'undefined' && conferencia && conferencia.ativa) {
+      if (typeof mostrarToast === 'function') {
+        mostrarToast('🔄 Versão nova disponível — finalize a conferência e reabra o app');
+      }
+      return;
+    }
+    recarregando = true;
+    location.reload();
+  });
+
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then(function (reg) {
+        console.log('SW registrado:', reg.scope);
+        reg.update().catch(function () {});
+        setInterval(function () { reg.update().catch(function () {}); }, 30 * 60 * 1000);
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') reg.update().catch(function () {});
+        });
+      })
+      .catch(function (err) { console.error('Erro SW:', err); });
   });
 }
 
@@ -3913,6 +3936,245 @@ function exportarCSVZebraMult(dataInicioP, dataFimP, qtdPorEtiqueta = 8) {
   mostrarToast(`CSV exportado (${qtdPorEtiqueta} QR por etiqueta)`);
 }
 
+/* ================= HISTÓRICO DE CONFERÊNCIAS NA NUVEM ================= */
+
+const CONF_HISTORICO_COLLECTION = 'conferencias_salvas';
+let confHistoricoCache = [];
+let conferenciaExportSelecionada = null;
+
+function confHistoricoGerarId() {
+  return 'conf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+}
+
+function confHistoricoLerLocal() {
+  try {
+    let lista = JSON.parse(localStorage.getItem('conferenciasHistorico') || '[]');
+    return Array.isArray(lista) ? lista : [];
+  } catch (e) { return []; }
+}
+
+function confHistoricoSalvarLocal(payload) {
+  let lista = confHistoricoLerLocal();
+  let idx = lista.findIndex(c => c && c.id === payload.id);
+  if (idx >= 0) lista[idx] = payload; else lista.unshift(payload);
+  lista.sort((a, b) => String(b.criadoISO || '').localeCompare(String(a.criadoISO || '')));
+  lista = lista.slice(0, 10);
+  try {
+    localStorage.setItem('conferenciasHistorico', JSON.stringify(lista));
+  } catch (e) {
+    try { localStorage.setItem('conferenciasHistorico', JSON.stringify(lista.slice(0, 2))); } catch (e2) {}
+  }
+}
+
+/* Salva (ou atualiza) a conferência no histórico da nuvem */
+async function confSalvarHistoricoNuvem(dados, mostrarMsg) {
+  dados = dados || conferencia;
+  if (!dados || !Array.isArray(dados.fotoEstoque) || dados.fotoEstoque.length === 0) {
+    if (mostrarMsg) mostrarToast('Nenhuma conferência para salvar', 'erro');
+    return null;
+  }
+  let id = dados.historicoId || confHistoricoGerarId();
+  let agoraISO = new Date().toISOString();
+  let foto = dados.fotoEstoque || [];
+  let conferidas = dados.conferidas || [];
+  let extras = dados.extras || [];
+  let pendentes = foto.filter(b => !conferidas.includes(b.id));
+  let payload = {
+    id: id,
+    usuario: (typeof nomeUsuarioConferencia !== 'undefined' && nomeUsuarioConferencia) ? nomeUsuarioConferencia : 'operador',
+    tipo: dados.tipo || 'tudo',
+    dataInicio: dados.dataInicio || '',
+    dataFim: dados.dataFim || new Date().toLocaleString('pt-BR'),
+    criadoISO: dados.historicoCriadoISO || agoraISO,
+    atualizadoISO: agoraISO,
+    conferidas: conferidas,
+    extras: extras,
+    fotoEstoque: foto,
+    totalBobinas: foto.length,
+    totalConferidas: conferidas.length,
+    totalPendentes: pendentes.length,
+    totalExtras: extras.length
+  };
+
+  try {
+    conferencia.historicoId = id;
+    conferencia.historicoCriadoISO = payload.criadoISO;
+    dados.historicoId = id;
+    dados.historicoCriadoISO = payload.criadoISO;
+  } catch (e) {}
+
+  confHistoricoSalvarLocal(payload);
+
+  try {
+    if (typeof db === 'undefined' || !db) throw new Error('Firebase não configurado');
+    await db.collection(CONF_HISTORICO_COLLECTION).doc(id).set(payload, { merge: true });
+    if (mostrarMsg) mostrarToast('☁️ Conferência salva na nuvem');
+  } catch (e) {
+    console.error('Erro ao salvar conferência na nuvem:', e);
+    if (mostrarMsg) mostrarToast('Salvo só neste aparelho (sem nuvem)', 'erro');
+  }
+  return payload;
+}
+
+/* Junta nuvem + local (sem duplicar) */
+async function confHistoricoListar() {
+  let mapa = {};
+  confHistoricoLerLocal().forEach(c => { if (c && c.id) mapa[c.id] = c; });
+  try {
+    if (typeof db !== 'undefined' && db) {
+      let snap = await db.collection(CONF_HISTORICO_COLLECTION).orderBy('criadoISO', 'desc').limit(60).get();
+      snap.forEach(doc => {
+        let o = doc.data() || {};
+        o.id = o.id || doc.id;
+        mapa[o.id] = Object.assign({}, mapa[o.id] || {}, o);
+      });
+    }
+  } catch (e) {
+    console.warn('Não foi possível ler o histórico da nuvem:', e);
+  }
+  let lista = Object.keys(mapa).map(k => mapa[k]);
+  lista.sort((a, b) => String(b.criadoISO || '').localeCompare(String(a.criadoISO || '')));
+  return lista;
+}
+
+function confHistoricoFormatarData(c) {
+  let iso = c.criadoISO || c.atualizadoISO || '';
+  let d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d.getTime())) return c.dataInicio || '—';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' +
+         d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function confHistoricoLinhaHTML(id, titulo, subtitulo, selecionado) {
+  let borda = selecionado ? '#2563eb' : '#e2e8f0';
+  let fundo = selecionado ? '#eff6ff' : '#ffffff';
+  return '<div class="conf-hist-item" data-id="' + id + '" onclick="confSelecionarConferenciaExport(\'' + id + '\')" ' +
+    'style="padding:7px 9px; border:2px solid ' + borda + '; background:' + fundo + '; border-radius:8px; cursor:pointer;">' +
+    '<div style="font-size:12px; font-weight:700; color:#1e293b;">' + titulo + '</div>' +
+    '<div style="font-size:10px; color:#64748b;">' + subtitulo + '</div></div>';
+}
+
+async function confCarregarListaExport() {
+  let container = document.getElementById('exportListaConferencias');
+  if (!container) return;
+  container.innerHTML = '<div style="font-size:11px;color:#64748b;text-align:center;padding:10px;">⏳ Carregando...</div>';
+
+  let lista = await confHistoricoListar();
+  confHistoricoCache = lista;
+
+  let html = '';
+  lista.forEach(c => {
+    let sel = conferenciaExportSelecionada && conferenciaExportSelecionada.id === c.id;
+    let titulo = '📅 ' + confHistoricoFormatarData(c) + ' · ' + (c.usuario || 'operador');
+    let sub = (c.totalConferidas || 0) + ' conferida(s) · ' + (c.totalPendentes || 0) + ' pendente(s)' +
+              ((c.totalExtras || 0) > 0 ? ' · ' + c.totalExtras + ' extra(s)' : '');
+    html += confHistoricoLinhaHTML(c.id, titulo, sub, sel);
+  });
+  if (!html) html = '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:10px;">Nenhuma conferência salva ainda.<br>Finalize uma conferência para ela aparecer aqui.</div>';
+  container.innerHTML = html;
+
+  if (!conferenciaExportSelecionada && lista.length > 0) {
+    confSelecionarConferenciaExport(lista[0].id);
+  }
+}
+
+function confSelecionarConferenciaExport(id) {
+  let achou = confHistoricoCache.find(c => c && c.id === id);
+  if (!achou) { mostrarToast('Conferência não encontrada', 'erro'); return; }
+  conferenciaExportSelecionada = Object.assign({}, achou);
+
+  document.querySelectorAll('#exportListaConferencias .conf-hist-item').forEach(el => {
+    el.style.borderColor = '#e2e8f0';
+    el.style.background = '#ffffff';
+  });
+  let el = document.querySelector('#exportListaConferencias .conf-hist-item[data-id="' + id + '"]');
+  if (el) { el.style.borderColor = '#2563eb'; el.style.background = '#eff6ff'; }
+
+  let info = document.getElementById('exportConfSelecionadaInfo');
+  if (info) {
+    info.textContent = 'Selecionada: ' + confHistoricoFormatarData(conferenciaExportSelecionada) +
+      ' — ' + (conferenciaExportSelecionada.conferidas || []).length + ' conferida(s)';
+  }
+}
+
+/* Busca a conferência salva neste aparelho (usada pelo relatório da tela de resultado) */
+function obterConferenciaParaExport() {
+  let salva = null;
+  try {
+    let txt = localStorage.getItem('conferencia');
+    if (txt) salva = JSON.parse(txt);
+  } catch (e) { salva = null; }
+  if (salva && Array.isArray(salva.fotoEstoque) && salva.fotoEstoque.length > 0) {
+    if (!Array.isArray(salva.conferidas)) salva.conferidas = [];
+    if (!Array.isArray(salva.extras)) salva.extras = [];
+    return salva;
+  }
+  if (conferencia && Array.isArray(conferencia.fotoEstoque) && conferencia.fotoEstoque.length > 0) return conferencia;
+  return null;
+}
+
+/* PDF da conferência */
+function confExportarPDFConferencia(parcial, dados) {
+  dados = dados || conferencia;
+  parcial = (parcial === true);
+  if (typeof window.jspdf === 'undefined') { mostrarToast('PDF indisponível', 'erro'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape' });
+  const pageW = doc.internal.pageSize.width;
+  const conferidas = dados.fotoEstoque.filter(b => dados.conferidas.includes(b.id));
+  const pendentes = dados.fotoEstoque.filter(b => !dados.conferidas.includes(b.id));
+  const extras = dados.extras || [];
+  if (conferidas.length === 0 && extras.length === 0) { mostrarToast('Nada para exportar', 'erro'); return; }
+
+  doc.setFillColor(30, 58, 138);
+  doc.rect(0, 0, pageW, 18, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(parcial ? 'Conferência de Estoques — PARCIAL' : 'Conferência de Estoques', 14, 12);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Gerado em: ' + new Date().toLocaleString('pt-BR'), pageW - 14, 12, { align: 'right' });
+  doc.setTextColor(0, 0, 0);
+
+  doc.setFontSize(9);
+  doc.text('Início: ' + (dados.dataInicio || '—') +
+            '   |   Fim: ' + (parcial ? 'em andamento' : (dados.dataFim || '—')) +
+            '   |   Tipo: ' + nomeTiposConferencia(dados.tipo) +
+            '   |   Conferidas: ' + conferidas.length +
+            '   |   Não encontradas: ' + pendentes.length +
+            '   |   Extras: ' + extras.length, 14, 25);
+
+  let body = [];
+  conferidas.forEach(b => body.push(['Conferida', b.item, b.versao, b.tamanho || '', Math.round(b.peso)]));
+  pendentes.forEach(b => body.push(['Não encontrada', b.item, b.versao, b.tamanho || '', Math.round(b.peso)]));
+  extras.forEach(b => body.push(['Extra', b.item, b.versao, b.tamanho || '', Math.round(b.peso)]));
+
+  doc.autoTable({
+    startY: 29,
+    head: [['Status', 'Item', 'Versão', 'Medidas', 'Kg']],
+    body: body,
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [240, 244, 255] },
+    columnStyles: {
+      0: { cellWidth: 34 }, 1: { cellWidth: 40 }, 2: { cellWidth: 20 },
+      3: { cellWidth: 34 }, 4: { cellWidth: 20 }
+    }
+  });
+
+  let totalPages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7);
+    doc.setTextColor(180, 180, 180);
+    doc.text('Página ' + p + '/' + totalPages, pageW / 2, doc.internal.pageSize.height - 5, { align: 'center' });
+  }
+
+  doc.save('Conferencia_' + (parcial ? 'PARCIAL_' : '') + getTimestamp() + '.pdf');
+  mostrarToast(parcial ? 'PDF parcial exportado' : 'PDF exportado');
+}
+
 /* ================= NOVO MENU EXPORTAR ================= */
 
 let exportTipoSelecionado = 'estoque';
@@ -3939,8 +4201,24 @@ function selecionarTipoExport(card) {
     formatosNormal.querySelectorAll('.export-formato-btn').forEach(b => b.classList.remove('selecionado'));
     formatosNormal.querySelector('[data-formato="excel"]').classList.add('selecionado');
   }
-  if (exportTipoSelecionado === 'estoque') etapaPeriodo.classList.add('hidden');
-  else etapaPeriodo.classList.remove('hidden');
+  let etapaConf = document.getElementById('exportEtapaConferencia');
+  if (etapaConf) {
+    if (exportTipoSelecionado === 'conferencia') {
+      etapaConf.classList.remove('hidden');
+      confCarregarListaExport();
+    } else {
+      etapaConf.classList.add('hidden');
+    }
+  }
+  if (exportTipoSelecionado === 'estoque' || exportTipoSelecionado === 'conferencia') {
+    etapaPeriodo.classList.add('hidden');
+    exportUsarPeriodo = false;
+    let periodoDatas = document.getElementById('exportPeriodoDatas');
+    if (periodoDatas) periodoDatas.classList.add('hidden');
+    let toggles = document.querySelectorAll('.export-periodo-toggle button');
+    toggles.forEach(b => b.classList.remove('selecionado'));
+    if (toggles[0]) toggles[0].classList.add('selecionado');
+  } else etapaPeriodo.classList.remove('hidden');
 }
 
 function selecionarFormato(btn) {
@@ -3974,6 +4252,9 @@ function resetarMenuExportar() {
   if (excelBtn) excelBtn.classList.add('selecionado');
   let etapaPeriodo = document.getElementById('exportEtapaPeriodo');
   let periodoDatas = document.getElementById('exportPeriodoDatas');
+  let etapaConfReset = document.getElementById('exportEtapaConferencia');
+  if (etapaConfReset) etapaConfReset.classList.add('hidden');
+  conferenciaExportSelecionada = null;
   if (etapaPeriodo) etapaPeriodo.classList.add('hidden');
   if (periodoDatas) periodoDatas.classList.add('hidden');
   let toggleBtns = document.querySelectorAll('.export-periodo-toggle button');
@@ -3987,7 +4268,7 @@ function resetarMenuExportar() {
 
 function executarExportacaoNova() {
   let dataInicioExp = null, dataFimExp = null;
-  if (exportUsarPeriodo) {
+  if (exportUsarPeriodo && exportTipoSelecionado !== 'conferencia') {
     dataInicioExp = document.getElementById('exportDataInicio').value;
     dataFimExp = document.getElementById('exportDataFim').value;
     if (!dataInicioExp && !dataFimExp) { mostrarToast('Informe pelo menos uma data', 'erro'); return; }
@@ -4002,6 +4283,14 @@ function executarExportacaoNova() {
       return (!dataInicioExp || dataISO >= dataInicioExp) && (!dataFimExp || dataISO <= dataFimExp);
     });
     if (dadosFiltrados.length === 0) { mostrarToast('Nenhum registro no período', 'erro'); return; }
+  }
+  if (exportTipoSelecionado === 'conferencia') {
+    let dadosConf = conferenciaExportSelecionada;
+    if (!dadosConf) { mostrarToast('Escolha uma conferência da lista', 'erro'); return; }
+    if (exportFormatoSelecionado === 'pdf') confExportarPDFConferencia(false, dadosConf);
+    else confExportarResultado(false, dadosConf);
+    fecharModalConfig();
+    return;
   }
   if (exportTipoSelecionado === 'qrcodes') {
     let bobinas = coletarBobinasParaQR(dataInicioExp, dataFimExp);
@@ -5092,6 +5381,9 @@ function iniciarConferencia() {
   conferencia.fotoEstoque = foto;
   conferencia.conferidas = [];
   conferencia.extras = [];
+  conferencia.historicoId = null;
+  conferencia.historicoCriadoISO = null;
+  conferencia.dataFim = null;
   confSalvar();
   mostrarTelaConf('confTelaAndamento');
   confRenderizarLista();
@@ -5100,7 +5392,13 @@ function iniciarConferencia() {
 }
 
 function confSalvar() {
-  let dados = { ativa: conferencia.ativa, tipo: conferencia.tipo, dataInicio: conferencia.dataInicio, fotoEstoque: conferencia.fotoEstoque, conferidas: conferencia.conferidas, extras: conferencia.extras };
+  let dados = {
+    ativa: conferencia.ativa, tipo: conferencia.tipo, dataInicio: conferencia.dataInicio,
+    fotoEstoque: conferencia.fotoEstoque, conferidas: conferencia.conferidas, extras: conferencia.extras,
+    historicoId: conferencia.historicoId || null,
+    historicoCriadoISO: conferencia.historicoCriadoISO || null,
+    dataFim: conferencia.dataFim || null
+  };
   localStorage.setItem('conferencia', JSON.stringify(dados));
 confSalvarFirebase();
 }
@@ -5513,20 +5811,23 @@ function confAjustarEstoque() {
   mostrarToast('Estoque ajustado pela conferência');
 }
 
-function confExportarResultado() {
-  let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
-  let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
+function confExportarResultado(parcial, dados) {
+  parcial = (parcial === true);
+  dados = dados || conferencia;
+  let conferidas = dados.fotoEstoque.filter(b => dados.conferidas.includes(b.id));
+  let pendentes = dados.fotoEstoque.filter(b => !dados.conferidas.includes(b.id));
+  let extrasConf = dados.extras || [];
   const wb = XLSX.utils.book_new();
   let linhas = [];
-  linhas.push(['CONFERÊNCIA DE INVENTÁRIO', '', '', '', '']);
-  linhas.push(['Data início:', conferencia.dataInicio, '', '', '']);
-  linhas.push(['Data fim:', new Date().toLocaleString('pt-BR'), '', '', '']);
-  linhas.push(['Tipo:', nomeTiposConferencia(conferencia.tipo), '', '', '']);
+  linhas.push([parcial ? 'CONFERÊNCIA DE INVENTÁRIO (PARCIAL)' : 'CONFERÊNCIA DE INVENTÁRIO', '', '', '', '']);
+  linhas.push(['Data início:', dados.dataInicio || '', '', '', '']);
+  linhas.push(['Data fim:', parcial ? 'em andamento' : (dados.dataFim || new Date().toLocaleString('pt-BR')), '', '', '']);
+  linhas.push(['Tipo:', nomeTiposConferencia(dados.tipo), '', '', '']);
   linhas.push(['', '', '', '', '']);
   linhas.push(['RESUMO', '', '', '', '']);
   linhas.push(['Conferidas:', conferidas.length, '', '', '']);
   linhas.push(['Não encontradas:', pendentes.length, '', '', '']);
-  linhas.push(['Extras:', conferencia.extras.length, '', '', '']);
+  linhas.push(['Extras:', extrasConf.length, '', '', '']);
   linhas.push(['', '', '', '', '']);
   if (conferidas.length > 0) {
     linhas.push(['CONFERIDAS', '', '', '', '']);
@@ -5540,10 +5841,10 @@ function confExportarResultado() {
     pendentes.forEach(b => linhas.push([b.item, b.versao, b.tamanho, Math.round(b.peso), 'Não encontrada']));
     linhas.push(['', '', '', '', '']);
   }
-  if (conferencia.extras.length > 0) {
+  if (extrasConf.length > 0) {
     linhas.push(['EXTRAS', '', '', '', '']);
     linhas.push(['Item', 'Versão', 'Medidas', 'Kg', 'Status']);
-    conferencia.extras.forEach(b => linhas.push([b.item, b.versao, b.tamanho || '', Math.round(b.peso), 'Extra']));
+    extrasConf.forEach(b => linhas.push([b.item, b.versao, b.tamanho || '', Math.round(b.peso), 'Extra']));
   }
   const ws = XLSX.utils.aoa_to_sheet(linhas);
   ws['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 14 }];
@@ -5884,6 +6185,12 @@ async function confFinalizarColaborativo() {
 
   // Mostra resultado — o botão Juntar já está sempre visível
   finalizarConferencia();
+
+  // Grava no histórico da nuvem (lista do Exportar dados)
+  if (conferencia.ativa === false) {
+    conferencia.dataFim = new Date().toLocaleString('pt-BR');
+    confSalvarHistoricoNuvem(conferencia, false);
+  }
 }
 
 async function juntarConferencias() {
@@ -5962,6 +6269,12 @@ async function juntarConferencias() {
 
     confSalvar();
     finalizarConferencia();
+
+    // Atualiza a conferência unida no histórico da nuvem
+    if (conferencia.ativa === false) {
+      conferencia.dataFim = new Date().toLocaleString('pt-BR');
+      confSalvarHistoricoNuvem(conferencia, false);
+    }
     
     let totalUnico = nomesUsuarios.filter((n, i) => nomesUsuarios.indexOf(n) === i);
     let msg = '✅ ' + (totalUnico.length > 0 ? totalUnico.join(' + ') + ' — ' : '') + 'Conferências unidas!';
@@ -5998,6 +6311,11 @@ window.finalizarConferencia = finalizarConferencia;
 window.finalizarConferenciaSilenciosa = finalizarConferenciaSilenciosa;
 window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
+window.confExportarPDFConferencia = confExportarPDFConferencia;
+window.confSalvarHistoricoNuvem = confSalvarHistoricoNuvem;
+window.confCarregarListaExport = confCarregarListaExport;
+window.confSelecionarConferenciaExport = confSelecionarConferenciaExport;
+window.obterConferenciaParaExport = obterConferenciaParaExport;
 
 // DOMContentLoaded consolidado no iniciarMonitoramentoColetor
 // O coletor é tratado exclusivamente pela função acima

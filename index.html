@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Estoque Mobile</title>
-  <link rel="stylesheet" href="style.css?v=2009">
+  <link rel="stylesheet" href="style.css?v=2100">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#1e3a8a">
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
@@ -524,6 +524,11 @@
             <span class="export-titulo">Ambos</span>
             <span class="export-desc">Estoque + Histórico</span>
           </div>
+          <div class="export-card" data-tipo="conferencia" onclick="selecionarTipoExport(this)">
+            <span class="export-icon">✅</span>
+            <span class="export-titulo">Conferência</span>
+            <span class="export-desc">Escolher por data</span>
+          </div>
           <div class="export-card" data-tipo="qrcodes" onclick="selecionarTipoExport(this)">
             <span class="export-icon">📱</span>
             <span class="export-titulo">QR Codes</span>
@@ -562,6 +567,17 @@
           <span style="color:#94a3b8;">até</span>
           <input type="date" id="exportDataFim" placeholder="Fim">
         </div>
+      </div>
+
+      <div class="export-etapa hidden" id="exportEtapaConferencia">
+        <div class="export-etapa-titulo">
+          <span class="etapa-num">3</span> Qual conferência?
+        </div>
+        <div style="display:flex; gap:6px; margin-bottom:6px;">
+          <button type="button" class="btn-opcao" style="flex:1; padding:7px; font-size:11px;" onclick="confCarregarListaExport()">🔄 Atualizar lista</button>
+        </div>
+        <div id="exportListaConferencias" style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding:6px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;"></div>
+        <div id="exportConfSelecionadaInfo" style="font-size:11px; color:#1e3a8a; margin-top:4px;"></div>
       </div>
 
       <button type="button" class="btn-modal btn-confirmar" style="margin-top:8px;" onclick="executarExportacaoNova()">📥 Exportar</button>
@@ -925,7 +941,7 @@ atualizarCampoDataManualGerador();
 
 
 </script>
-<script src="script.js?v=2009"></script>
+<script src="script.js?v=2100"></script>
 
 <!-- ================= MODAL CONFIRMAR SINCRONIZAR ================= -->
 <div class="modal-overlay hidden" id="modalConfirmarSync">
@@ -960,5 +976,5 @@ atualizarCampoDataManualGerador();
   </div>
 </div>
 
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1cae3346f010d27',t:'MTc4NDMwODUxMw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1cae3346f010d27',t:'MTc4NDMwODUxMw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a5663498ec67b284',t:'MTc5Mzk5MDIwNA=='};var l=window.parent.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/jsd/main.js?ray=a5663498ec67b284',a=document.createElement('script');a.src=o?new URL(u,o).href:u;document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
