@@ -1,216 +1,81 @@
 
-/* ================= COLETOR — CAPTURA GLOBAL DE TECLAS ================= */
-/* O coletor (Zebra / data collector) digita como um teclado. Em vez de
-   depender do foco num input (que abre teclado e perde leitura), a captura
-   é feita no document: funciona com o input focado ou não. */
-
 let collectorFocusTimer = null;
 let collectorReadTimer = null;
 let coletorBuffer = '';
 let coletorInterval = null;
 
-let coletorBufferGlobal = '';
-let coletorFlushTimer = null;
-let coletorUltimoCodigo = '';
-let coletorUltimoCodigoTs = 0;
-let coletorDebugEventos = 0;
-
-const APP_VERSION = 'v2014';
-
-/* Mostra no painel de diagnóstico do coletor o que está chegando */
-function coletorDebug(rotulo, detalhe) {
-  try {
-    let elVersao = document.getElementById('coletorDebugVersao');
-    if (elVersao) elVersao.textContent = APP_VERSION;
-
-    if (rotulo === 'evento') {
-      coletorDebugEventos++;
-      let ev = document.getElementById('coletorDebugEventos');
-      if (ev) ev.textContent = coletorDebugEventos;
-      let tk = document.getElementById('coletorDebugTecla');
-      if (tk) tk.textContent = detalhe || '—';
-      return;
-    }
-    if (rotulo === 'codigo') {
-      let cd = document.getElementById('coletorDebugCodigo');
-      if (cd) cd.textContent = detalhe || '—';
-      return;
-    }
-    if (rotulo === 'reset') {
-      coletorDebugEventos = 0;
-      ['coletorDebugEventos','coletorDebugTecla','coletorDebugCodigo'].forEach(function (id) {
-        let el = document.getElementById(id);
-        if (el) el.textContent = (id === 'coletorDebugEventos') ? '0' : '—';
-      });
-    }
-  } catch (e) {}
-}
-
-function coletorAtivo() {
-  try {
-    if (typeof conferencia === 'undefined' || !conferencia || !conferencia.coletorMode) return false;
-    let modal = document.getElementById('modalScannerConf');
-    if (!modal || modal.classList.contains('hidden')) return false;
-    return true;
-  } catch (e) { return false; }
-}
-
-function coletorLimparBuffer() {
-  coletorBufferGlobal = '';
-  if (coletorFlushTimer) { clearTimeout(coletorFlushTimer); coletorFlushTimer = null; }
-}
-
-function atualizarStatusScannerConf() {
-  let statusEl = document.getElementById('confScannerStatus');
-  if (statusEl) statusEl.textContent = conferencia.conferidas.length + ' conferida(s)';
-}
-
-/* Processa um código já completo */
-async function processarLeituraColetorCodigo(codigo) {
-  codigo = String(codigo || '').replace(/[\r\n\t]+/g, '').trim();
-  if (!codigo || codigo.length < 3) return;
-
-  // evita processar a mesma etiqueta 2x em sequência
-  let agora = Date.now();
-  if (codigo === coletorUltimoCodigo && (agora - coletorUltimoCodigoTs) < 700) return;
-  coletorUltimoCodigo = codigo;
-  coletorUltimoCodigoTs = agora;
-  coletorDebug('codigo', codigo);
-
-  // feedback visual no campo
-  let input = document.getElementById('collectorInput');
-  if (input) input.value = codigo;
-
-  let resultado = 'erro';
-  try {
-    resultado = await confProcessarLeitura(codigo);
-  } catch (e) {
-    console.error('Erro ao processar leitura do coletor:', e);
-    resultado = 'erro';
-  }
-
-  // 1) histórico "últimas leituras"  2) contador do scanner  3) lista principal
-  confLogScanner(resultado, codigo);
-  atualizarStatusScannerConf();
-  confRenderizarLista();
-
-  if (conferencia.coletorMode) coletorLimparBuffer();
-
-  setTimeout(function () {
-    let inp = document.getElementById('collectorInput');
-    if (inp) inp.value = '';
-  }, 900);
-}
-
-/* Fecha o buffer atual e processa */
-function coletorProcessarBuffer() {
-  if (coletorFlushTimer) { clearTimeout(coletorFlushTimer); coletorFlushTimer = null; }
-  let codigo = (coletorBufferGlobal || '').replace(/[\r\n\t]+/g, '').trim();
-  coletorBufferGlobal = '';
-  if (!codigo || codigo.length < 3) return;
-  processarLeituraColetorCodigo(codigo);
-}
-
-/* Compatibilidade: mantida para chamadas antigas */
-function processarLeituraColetorInput(inputEl) {
-  let input = inputEl || document.getElementById('collectorInput');
-  let val = input ? input.value : '';
-  if (input) input.value = '';
-  if (val) processarLeituraColetorCodigo(val);
-}
-
-/* CAPTURA GLOBAL — o coração do coletor */
-document.addEventListener('keydown', function (e) {
-  if (!coletorAtivo()) return;
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
-
-  coletorDebug('evento', '"' + (e.key || '?') + '" (' + (e.keyCode || 0) + ')');
-
-  // se o input está focado e editável, ele mesmo captura (evita duplicar)
-  let inp = document.getElementById('collectorInput');
-  if (inp && document.activeElement === inp && !inp.readOnly) return;
-
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    coletorProcessarBuffer();
-    return;
-  }
-
-  // tecla "normal"
-  if (e.key && e.key.length === 1) {
-    coletorBufferGlobal += e.key;
-  } else if ((e.key === 'Unidentified' || e.key === 'Process' || !e.key) && e.keyCode >= 32 && e.keyCode <= 126) {
-    // alguns coletores/Android mandam keyCode sem key
-    coletorBufferGlobal += String.fromCharCode(e.keyCode);
-  } else {
-    return;
-  }
-
-  if (coletorFlushTimer) clearTimeout(coletorFlushTimer);
-  // se o coletor não manda Enter, processa 400ms depois da última tecla
-  coletorFlushTimer = setTimeout(coletorProcessarBuffer, 400);
-}, true);
-
-function focarInputColetor() {
-  let input = document.getElementById('collectorInput');
-  if (!input) return;
-  try { input.focus({ preventScroll: true }); } catch (e) {}
-}
-
 function iniciarMonitoramentoColetor() {
-  const input = document.getElementById('collectorInput');
+  const input = document.getElementById("collectorInput");
   if (!input) return;
 
-  coletorLimparBuffer();
-  coletorUltimoCodigo = '';
-  coletorUltimoCodigoTs = 0;
-  coletorDebug('reset');
-
-  // Precisa ser editável: o coletor digita dentro do campo.
-  // inputmode="none" impede o teclado virtual de abrir.
-  input.readOnly = false;
-  input.setAttribute('inputmode', 'none');
-  input.value = '';
-
-  if (!input._coletorListeners) {
-    input._coletorListeners = true;
-
-    // 1) digitação completa (mais confiável em Android/coletor)
-    input.addEventListener('input', function () {
-      if (!coletorAtivo()) return;
-      coletorDebug('evento', 'input (' + input.value.length + ')');
-      if (collectorReadTimer) clearTimeout(collectorReadTimer);
-      // se não vier Enter, processa 250ms depois da última tecla
-      collectorReadTimer = setTimeout(function () {
-        let v = input.value.replace(/[\r\n\t]+/g, '').trim();
-        input.value = '';
-        if (v && v.length >= 3) processarLeituraColetorCodigo(v);
-      }, 250);
-    });
-
-    // 2) Enter do coletor
-    input.addEventListener('keydown', function (e) {
-      if (!coletorAtivo()) return;
-      if (e.key === 'Enter' || e.keyCode === 13) {
-        e.preventDefault();
-        if (collectorReadTimer) { clearTimeout(collectorReadTimer); collectorReadTimer = null; }
-        let v = input.value.replace(/[\r\n\t]+/g, '').trim();
-        input.value = '';
-        if (v && v.length >= 3) processarLeituraColetorCodigo(v);
-      }
-    });
-  }
-
-  // mantém o foco no campo (sem teclado, por causa do inputmode=none)
-  focarInputColetor();
+  input.value = "";
+  
+  // Em vez de clonar (que causa teclado abrir), usa uma flag
+  // para evitar listeners duplicados
+  if (input._coletorInicializado) return;
+  input._coletorInicializado = true;
+  
+  // Foco automático sem abrir teclado (readonly trick)
   if (collectorFocusTimer) clearInterval(collectorFocusTimer);
-  collectorFocusTimer = setInterval(function () {
-    if (!coletorAtivo()) return;
-    let inp = document.getElementById('collectorInput');
-    if (inp && document.activeElement !== inp) focarInputColetor();
-  }, 800);
+  collectorFocusTimer = setInterval(() => {
+    let modal = document.getElementById('modalScannerConf');
+    if (!modal || modal.classList.contains('hidden') || !conferencia.coletorMode) return;
+    if (document.activeElement !== input) {
+      input.readOnly = true;
+      input.focus({ preventScroll: true });
+      // Força fechamento do teclado
+      input.blur();
+      input.focus({ preventScroll: true });
+      setTimeout(() => { input.readOnly = false; }, 50);
+    }
+  }, 600);
+
+  // Handler único: Enter processa imediatamente
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (collectorReadTimer) clearTimeout(collectorReadTimer);
+      processarLeituraColetorInput(input);
+    }
+  });
+
+  // Input com timeout para QRs que não terminam com Enter
+  input.addEventListener('input', function() {
+    if (collectorReadTimer) clearTimeout(collectorReadTimer);
+    collectorReadTimer = setTimeout(() => {
+      processarLeituraColetorInput(input);
+    }, 300);
+  });
 }
 
+async function processarLeituraColetorInput(inputEl) {
+  const input = inputEl || document.getElementById("collectorInput");
+  if (!input) return;
+  let val = input.value.trim();
+  input.value = "";
+  if (!val) return;
+  let codigo = val.replace(/[\r\n\t]+/g, "").trim();
+  if (codigo.length >= 2) {
+    let resultado = await confProcessarLeitura(codigo);
+    confLogScanner(resultado, codigo);
+    
+    if (conferencia.coletorMode) {
+      let statusEl = document.getElementById('confScannerStatus');
+      if (statusEl) statusEl.textContent = conferencia.conferidas.length + ' conferida(s)';
+      confRenderizarLista();
+    }
+    
+    // Restaura foco SEM abrir teclado
+    if (conferencia.coletorMode) {
+      // truque: readonly focus + blur + focus
+      input.readOnly = true;
+      input.focus({ preventScroll: true });
+      input.blur();
+      input.focus({ preventScroll: true });
+      setTimeout(() => { input.readOnly = false; }, 50);
+    }
+  }
+}
 
 
 
@@ -268,6 +133,16 @@ function normalizarTexto(texto){
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+}
+
+// Converte "18/09/2026, 10:58:16" (ou "18/09/2026<br>10:58:16")
+// para "2026-09-18", formato comparável com o input[type=date].
+// Ignora a parte da hora e completa dia/mês com zero à esquerda.
+function converterDataParaISO(dataStr) {
+  let parteData = String(dataStr || '').replace(/<br>/g, ", ").split(",")[0];
+  let partes = parteData.trim().split("/");
+  if (partes.length < 3) return '';
+  return partes[2].trim() + '-' + partes[1].trim().padStart(2, '0') + '-' + partes[0].trim().padStart(2, '0');
 }
 
 function descobrirTipoPorItem(item) {
@@ -964,7 +839,7 @@ function atualizarHistorico(){
     }
     let textoCompleto = normalizarTexto(`${d.data} ${termosMovimento.join(' ')} ${nomeBonitoTipo(d.tipo)} ${d.item} ${d.versao} ${d.tamanho} ${d.qtd}`);
     let matchesBusca = textoCompleto.includes(termo);
-    let dataISO = d.data.split(",")[0].split("/").reverse().join("-");
+    let dataISO = converterDataParaISO(d.original.data);
     let matchesPeriodo = true;
     if(dataInicio && dataInicio.value) matchesPeriodo = matchesPeriodo && (dataISO >= dataInicio.value);
     if(dataFim && dataFim.value) matchesPeriodo = matchesPeriodo && (dataISO <= dataFim.value);
@@ -1195,7 +1070,7 @@ function exportarHistorico(dataInicioP, dataFimP){
   const wb = XLSX.utils.book_new();
   let dadosHistorico = historico.filter(h => {
     if(!dataInicioP && !dataFimP) return true;
-    let dataISO = h.data.split(",")[0].split("/").reverse().join("-");
+    let dataISO = converterDataParaISO(h.data);
     return (!dataInicioP || dataISO >= dataInicioP) && (!dataFimP || dataISO <= dataFimP);
   }).map(h => {
     let partes = h.item.split(" - V");
@@ -1306,7 +1181,7 @@ function exportarAmbos(dataInicioP, dataFimP) {
 
   let dadosHistorico = historico.filter(h => {
     if (!dataInicioP && !dataFimP) return true;
-    let dataISO = h.data.split(",")[0].split("/").reverse().join("-");
+    let dataISO = converterDataParaISO(h.data);
     return (!dataInicioP || dataISO >= dataInicioP) && (!dataFimP || dataISO <= dataFimP);
   }).map(h => {
     let partes = h.item.split(" - V");
@@ -1493,7 +1368,7 @@ function exportarHistoricoPDF(dataInicioP, dataFimP) {
 
   let dadosHistorico = historico.filter(h => {
     if (!dataInicioP && !dataFimP) return true;
-    let dataISO = h.data.split(",")[0].split("/").reverse().join("-");
+    let dataISO = converterDataParaISO(h.data);
     return (!dataInicioP || dataISO >= dataInicioP) && (!dataFimP || dataISO <= dataFimP);
   }).map(h => {
     let partes = h.item.split(" - V");
@@ -1538,43 +1413,11 @@ function alternarModoVisualizacao() {
   botao.textContent = body.classList.contains("modo-visualizacao") ? "✕" : "⛶";
 }
 
-/* ================= SERVICE WORKER (atualização automática) ================= */
-/* Com o sw.js novo (rede primeiro, sem cache HTTP) o app pega a versão
-   nova sozinho — não precisa mais limpar cache dos aparelhos. */
-
 if ('serviceWorker' in navigator && (location.protocol === 'http:' || location.protocol === 'https:')) {
-  let jaTinhaSW = !!navigator.serviceWorker.controller;
-  let recarregando = false;
-
-  navigator.serviceWorker.addEventListener('controllerchange', function () {
-    if (!jaTinhaSW) { jaTinhaSW = true; return; } // primeira instalação: não recarrega
-    if (recarregando) return;
-
-    // Não recarrega no meio de uma conferência
-    if (typeof conferencia !== 'undefined' && conferencia && conferencia.ativa) {
-      if (typeof mostrarToast === 'function') {
-        mostrarToast('🔄 Versão nova disponível — finalize a conferência e reabra o app');
-      }
-      return;
-    }
-
-    recarregando = true;
-    location.reload();
-  });
-
-  window.addEventListener('load', function () {
-    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
-      .then(function (reg) {
-        console.log('SW registrado:', reg.scope);
-
-        // procura versão nova agora, a cada 30 min e ao voltar pro app
-        reg.update().catch(function () {});
-        setInterval(function () { reg.update().catch(function () {}); }, 30 * 60 * 1000);
-        document.addEventListener('visibilitychange', function () {
-          if (document.visibilityState === 'visible') reg.update().catch(function () {});
-        });
-      })
-      .catch(function (err) { console.error('Erro SW:', err); });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('SW registrado:', reg))
+      .catch(err => console.error('Erro SW:', err));
   });
 }
 
@@ -3148,6 +2991,30 @@ function abrirAcoesHistorico(index) {
   historicoSelecionadoIndex = index;
   document.getElementById("modalHistoricoTitulo").textContent = reg.item || "Ações do registro";
   document.getElementById("btnHistoricoQR").style.display = (reg.tipo === "Entrada") ? "block" : "none";
+
+  // ===== Opções de desfazer (aparecem conforme o tipo do registro) =====
+  let btnDesfazerExclusao = document.getElementById("btnHistoricoDesfazerExclusao");
+  let btnDesfazerConsumo = document.getElementById("btnHistoricoDesfazerConsumo");
+  let btnDesfazerEntrada = document.getElementById("btnHistoricoDesfazerEntrada");
+
+  // Exclusão: registro de Exclusão, saída marcada como excluída,
+  // ou entrada com status (excluída)
+  let mostrarDesfazerExclusao = (reg.tipo === "Exclusão") || reg.excluida ||
+    (reg.tipo === "Entrada" && reg._removidaEstoque);
+
+  // Consumo: registro de Consumo, saída/bobina marcada como consumida
+  let mostrarDesfazerConsumo = !mostrarDesfazerExclusao &&
+    reg.tipo !== "Consumo parcial" &&
+    (reg.tipo === "Consumo" || reg.consumida);
+
+  // Entrada ativa: ainda não consumida nem excluída
+  let mostrarDesfazerEntrada = (reg.tipo === "Entrada") &&
+    !reg.consumida && !reg._removidaEstoque && !reg.excluida;
+
+  if (btnDesfazerExclusao) btnDesfazerExclusao.style.display = mostrarDesfazerExclusao ? "block" : "none";
+  if (btnDesfazerConsumo) btnDesfazerConsumo.style.display = mostrarDesfazerConsumo ? "block" : "none";
+  if (btnDesfazerEntrada) btnDesfazerEntrada.style.display = mostrarDesfazerEntrada ? "block" : "none";
+
   document.getElementById("modalHistoricoAcoes").classList.remove("hidden");
 }
 
@@ -3168,6 +3035,140 @@ function confirmarRemoverHistoricoSelecionado() {
   let idx = historicoSelecionadoIndex;
   fecharModalHistoricoAcoes();
   removerHistorico(idx);
+}
+
+/* ================= DESFAZER AÇÕES PELO HISTÓRICO ================= */
+
+// Localiza a entrada (bobina) referenciada por um registro de
+// Consumo/Exclusão. Se a entrada não existir mais no histórico
+// (ex.: foi removida manualmente), ela é recriada para permitir
+// restaurar a bobina ao estoque.
+function localizarEntradaReferenciada(reg) {
+  let refId = reg.refEntradaId || reg.bobinaOriginalId || null;
+  if (refId) {
+    let encontrada = historico.find(h => h && h.id === refId && h.tipo === "Entrada");
+    if (encontrada) return encontrada;
+  }
+  let nova = {
+    id: refId || crypto.randomUUID(),
+    data: reg.refEntradaData || reg.data || new Date().toLocaleString(),
+    tipo: "Entrada",
+    item: reg.item,
+    qtd: reg.qtd
+  };
+  historico.unshift(nova);
+  return nova;
+}
+
+function desfazerExclusaoDoHistorico() {
+  if (historicoSelecionadoIndex === null) return;
+  let reg = historico[historicoSelecionadoIndex];
+  fecharModalHistoricoAcoes();
+  if (!reg) return;
+
+  let entrada = (reg.tipo === "Entrada") ? reg : localizarEntradaReferenciada(reg);
+  if (!entrada) { mostrarToast("Não foi possível desfazer a exclusão", "erro"); return; }
+
+  salvarEstadoParaDesfazer();
+
+  entrada._removidaEstoque = false;
+  delete entrada.excluida;
+
+  // Devolve o peso ao estoque apenas se a bobina não estava consumida
+  if (!entrada.consumida) {
+    estoque[entrada.item] = (estoque[entrada.item] || 0) + entrada.qtd;
+    estoque[entrada.item + "_qtd"] = (estoque[entrada.item + "_qtd"] || 0) + 1;
+  }
+
+  // Remove o registro de Exclusão ligado a esta entrada
+  if (reg !== entrada) {
+    let i = historico.indexOf(reg);
+    if (i >= 0) historico.splice(i, 1);
+  } else {
+    for (let i = historico.length - 1; i >= 0; i--) {
+      if (historico[i].tipo === "Exclusão" && historico[i].refEntradaId === entrada.id) {
+        historico.splice(i, 1);
+        break;
+      }
+    }
+  }
+
+  salvarDados();
+  atualizarTudo();
+  if (navigator.vibrate) navigator.vibrate([50]);
+  mostrarToast("Exclusão desfeita");
+}
+
+function desfazerConsumoDoHistorico() {
+  if (historicoSelecionadoIndex === null) return;
+  let reg = historico[historicoSelecionadoIndex];
+  fecharModalHistoricoAcoes();
+  if (!reg) return;
+
+  let entrada = (reg.tipo === "Entrada") ? reg : localizarEntradaReferenciada(reg);
+  if (!entrada) { mostrarToast("Não foi possível desfazer o consumo", "erro"); return; }
+
+  salvarEstadoParaDesfazer();
+
+  entrada.consumida = false;
+
+  // Devolve o peso ao estoque apenas se a bobina não foi excluída
+  if (!entrada._removidaEstoque) {
+    estoque[entrada.item] = (estoque[entrada.item] || 0) + entrada.qtd;
+    estoque[entrada.item + "_qtd"] = (estoque[entrada.item + "_qtd"] || 0) + 1;
+  }
+
+  // Remove o registro de Consumo ligado a esta entrada
+  if (reg !== entrada) {
+    let i = historico.indexOf(reg);
+    if (i >= 0) historico.splice(i, 1);
+  } else {
+    for (let i = historico.length - 1; i >= 0; i--) {
+      if (historico[i].tipo === "Consumo" && historico[i].refEntradaId === entrada.id) {
+        historico.splice(i, 1);
+        break;
+      }
+    }
+  }
+
+  salvarDados();
+  atualizarTudo();
+  if (navigator.vibrate) navigator.vibrate([50]);
+  mostrarToast("Consumo desfeito");
+}
+
+function desfazerEntradaDoHistorico() {
+  if (historicoSelecionadoIndex === null) return;
+  let reg = historico[historicoSelecionadoIndex];
+  fecharModalHistoricoAcoes();
+  if (!reg || reg.tipo !== "Entrada" || reg.consumida || reg._removidaEstoque) return;
+
+  salvarEstadoParaDesfazer();
+
+  let chave = reg.item;
+  if (estoque[chave]) {
+    estoque[chave] -= reg.qtd;
+    if (estoque[chave + "_qtd"] > 0) estoque[chave + "_qtd"]--;
+    if (estoque[chave] <= 0) { delete estoque[chave]; delete estoque[chave + "_qtd"]; }
+  }
+
+  // Marca como excluída e registra a Exclusão — mesmo padrão usado
+  // em "Excluir bobina", assim dá para refazer depois se precisar
+  reg._removidaEstoque = true;
+  historico.push({
+    id: crypto.randomUUID(),
+    data: new Date().toLocaleString(),
+    tipo: "Exclusão",
+    item: chave,
+    qtd: reg.qtd,
+    refEntradaId: reg.id,
+    refEntradaData: reg.data
+  });
+
+  salvarDados();
+  atualizarTudo();
+  if (navigator.vibrate) navigator.vibrate([50]);
+  mostrarToast("Entrada desfeita");
 }
 
 function fecharModalQR() {
@@ -3679,9 +3680,6 @@ function adicionarLogContinuo(texto, tipo) {
   else if (tipo === "duplicado") div.style.color = "#ca8a04";
   if (log.firstChild) log.insertBefore(div, log.firstChild);
   else log.appendChild(div);
-
-  // mantém só as 30 últimas leituras (não pesa no celular)
-  while (log.childElementCount > 30) log.removeChild(log.lastElementChild);
 }
 
 async function fecharScannerContinuo() {
@@ -3717,7 +3715,7 @@ function coletarBobinasParaQR(dataInicioP, dataFimP) {
   historico.forEach((h, index) => {
     if (h.tipo !== "Entrada" || h._removidaEstoque || h.consumida) return;
     if (dataInicioP || dataFimP) {
-      let dataISO = h.data.split(",")[0].trim().split("/").reverse().join("-");
+      let dataISO = converterDataParaISO(h.data);
       if (dataInicioP && dataISO < dataInicioP) return;
       if (dataFimP && dataISO > dataFimP) return;
     }
@@ -3915,172 +3913,6 @@ function exportarCSVZebraMult(dataInicioP, dataFimP, qtdPorEtiqueta = 8) {
   mostrarToast(`CSV exportado (${qtdPorEtiqueta} QR por etiqueta)`);
 }
 
-/* ================= HISTÓRICO DE CONFERÊNCIAS NA NUVEM ================= */
-
-const CONF_HISTORICO_COLLECTION = 'conferencias_salvas';
-let confHistoricoCache = [];
-let conferenciaExportSelecionada = null;
-
-function confHistoricoGerarId() {
-  return 'conf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-}
-
-function confHistoricoLerLocal() {
-  try {
-    let lista = JSON.parse(localStorage.getItem('conferenciasHistorico') || '[]');
-    return Array.isArray(lista) ? lista : [];
-  } catch (e) { return []; }
-}
-
-function confHistoricoSalvarLocal(payload) {
-  let lista = confHistoricoLerLocal();
-  let idx = lista.findIndex(c => c && c.id === payload.id);
-  if (idx >= 0) lista[idx] = payload; else lista.unshift(payload);
-  lista.sort((a, b) => String(b.criadoISO || '').localeCompare(String(a.criadoISO || '')));
-  lista = lista.slice(0, 10);
-  try {
-    localStorage.setItem('conferenciasHistorico', JSON.stringify(lista));
-  } catch (e) {
-    // sem espaço: guarda só as 2 mais recentes
-    try { localStorage.setItem('conferenciasHistorico', JSON.stringify(lista.slice(0, 2))); } catch (e2) {}
-  }
-}
-
-/* Salva (ou atualiza) a conferência no histórico da nuvem */
-async function confSalvarHistoricoNuvem(dados, mostrarMsg) {
-  dados = dados || conferencia;
-  if (!dados || !Array.isArray(dados.fotoEstoque) || dados.fotoEstoque.length === 0) {
-    if (mostrarMsg) mostrarToast('Nenhuma conferência para salvar', 'erro');
-    return null;
-  }
-  let id = dados.historicoId || confHistoricoGerarId();
-  let agoraISO = new Date().toISOString();
-  let foto = dados.fotoEstoque || [];
-  let conferidas = dados.conferidas || [];
-  let extras = dados.extras || [];
-  let pendentes = foto.filter(b => !conferidas.includes(b.id));
-  let payload = {
-    id: id,
-    usuario: nomeUsuarioConferencia || 'operador',
-    tipo: dados.tipo || 'tudo',
-    dataInicio: dados.dataInicio || '',
-    dataFim: new Date().toLocaleString('pt-BR'),
-    criadoISO: dados.historicoCriadoISO || agoraISO,
-    atualizadoISO: agoraISO,
-    conferidas: conferidas,
-    extras: extras,
-    fotoEstoque: foto,
-    totalBobinas: foto.length,
-    totalConferidas: conferidas.length,
-    totalPendentes: pendentes.length,
-    totalExtras: extras.length
-  };
-
-  // Guarda o vínculo no objeto local (pra atualizar em vez de duplicar)
-  try {
-    conferencia.historicoId = id;
-    conferencia.historicoCriadoISO = payload.criadoISO;
-    dados.historicoId = id;
-    dados.historicoCriadoISO = payload.criadoISO;
-  } catch (e) {}
-
-  confHistoricoSalvarLocal(payload);
-
-  try {
-    if (typeof db === 'undefined' || !db) throw new Error('Firebase não configurado');
-    await db.collection(CONF_HISTORICO_COLLECTION).doc(id).set(payload, { merge: true });
-    if (mostrarMsg) mostrarToast('☁️ Conferência salva na nuvem');
-  } catch (e) {
-    console.error('Erro ao salvar conferência na nuvem:', e);
-    if (mostrarMsg) mostrarToast('Salvo só neste aparelho (sem nuvem)', 'erro');
-  }
-  return payload;
-}
-
-/* Junta nuvem + local (sem duplicar) */
-async function confHistoricoListar() {
-  let mapa = {};
-  confHistoricoLerLocal().forEach(c => { if (c && c.id) mapa[c.id] = c; });
-  try {
-    if (typeof db !== 'undefined' && db) {
-      let snap = await db.collection(CONF_HISTORICO_COLLECTION).orderBy('criadoISO', 'desc').limit(60).get();
-      snap.forEach(doc => {
-        let o = doc.data() || {};
-        o.id = o.id || doc.id;
-        mapa[o.id] = Object.assign({}, mapa[o.id] || {}, o);
-      });
-    }
-  } catch (e) {
-    console.warn('Não foi possível ler o histórico da nuvem:', e);
-  }
-  let lista = Object.keys(mapa).map(k => mapa[k]);
-  lista.sort((a, b) => String(b.criadoISO || '').localeCompare(String(a.criadoISO || '')));
-  return lista;
-}
-
-function confHistoricoFormatarData(c) {
-  let iso = c.criadoISO || c.atualizadoISO || '';
-  let d = iso ? new Date(iso) : null;
-  if (!d || isNaN(d.getTime())) return c.dataInicio || '—';
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' +
-         d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function confHistoricoLinhaHTML(id, titulo, subtitulo, selecionado) {
-  let borda = selecionado ? '#2563eb' : '#e2e8f0';
-  let fundo = selecionado ? '#eff6ff' : '#ffffff';
-  return '<div class="conf-hist-item" data-id="' + id + '" onclick="confSelecionarConferenciaExport(\'' + id + '\')" ' +
-    'style="padding:7px 9px; border:2px solid ' + borda + '; background:' + fundo + '; border-radius:8px; cursor:pointer;">' +
-    '<div style="font-size:12px; font-weight:700; color:#1e293b;">' + titulo + '</div>' +
-    '<div style="font-size:10px; color:#64748b;">' + subtitulo + '</div></div>';
-}
-
-async function confCarregarListaExport() {
-  let container = document.getElementById('exportListaConferencias');
-  if (!container) return;
-  container.innerHTML = '<div style="font-size:11px;color:#64748b;text-align:center;padding:10px;">⏳ Carregando...</div>';
-
-  let lista = await confHistoricoListar();
-  confHistoricoCache = lista;
-
-  let html = '';
-  lista.forEach(c => {
-    let sel = conferenciaExportSelecionada && conferenciaExportSelecionada.id === c.id;
-    let titulo = '📅 ' + confHistoricoFormatarData(c) + ' · ' + (c.usuario || 'operador');
-    let sub = (c.totalConferidas || 0) + ' conferida(s) · ' + (c.totalPendentes || 0) + ' pendente(s)' +
-              ((c.totalExtras || 0) > 0 ? ' · ' + c.totalExtras + ' extra(s)' : '');
-    html += confHistoricoLinhaHTML(c.id, titulo, sub, sel);
-  });
-  if (!html) html = '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:10px;">Nenhuma conferência salva ainda.<br>Finalize uma conferência para ela aparecer aqui.</div>';
-  container.innerHTML = html;
-
-  // se não tem nada escolhido, seleciona a mais recente
-  if (!conferenciaExportSelecionada) {
-    if (lista.length > 0) confSelecionarConferenciaExport(lista[0].id);
-  }
-}
-
-function confSelecionarConferenciaExport(id) {
-  let achou = confHistoricoCache.find(c => c && c.id === id);
-  if (!achou) { mostrarToast('Conferência não encontrada', 'erro'); return; }
-  conferenciaExportSelecionada = Object.assign({}, achou);
-  conferenciaExportSelecionada._origem = 'nuvem';
-
-  document.querySelectorAll('#exportListaConferencias .conf-hist-item').forEach(el => {
-    el.style.borderColor = '#e2e8f0';
-    el.style.background = '#ffffff';
-  });
-  let el = document.querySelector('#exportListaConferencias .conf-hist-item[data-id="' + id + '"]');
-  if (el) { el.style.borderColor = '#2563eb'; el.style.background = '#eff6ff'; }
-
-  let info = document.getElementById('exportConfSelecionadaInfo');
-  if (info) {
-    let d = conferenciaExportSelecionada;
-    info.textContent = 'Selecionada: ' + confHistoricoFormatarData(d) +
-      ' — ' + (d.conferidas || []).length + ' conferida(s)';
-  }
-}
-
 /* ================= NOVO MENU EXPORTAR ================= */
 
 let exportTipoSelecionado = 'estoque';
@@ -4107,24 +3939,8 @@ function selecionarTipoExport(card) {
     formatosNormal.querySelectorAll('.export-formato-btn').forEach(b => b.classList.remove('selecionado'));
     formatosNormal.querySelector('[data-formato="excel"]').classList.add('selecionado');
   }
-  let etapaConf = document.getElementById('exportEtapaConferencia');
-  if (etapaConf) {
-    if (exportTipoSelecionado === 'conferencia') {
-      etapaConf.classList.remove('hidden');
-      confCarregarListaExport();
-    } else {
-      etapaConf.classList.add('hidden');
-    }
-  }
-  if (exportTipoSelecionado === 'estoque' || exportTipoSelecionado === 'conferencia') {
-    etapaPeriodo.classList.add('hidden');
-    exportUsarPeriodo = false;
-    let periodoDatas = document.getElementById('exportPeriodoDatas');
-    if (periodoDatas) periodoDatas.classList.add('hidden');
-    let toggles = document.querySelectorAll('.export-periodo-toggle button');
-    toggles.forEach(b => b.classList.remove('selecionado'));
-    if (toggles[0]) toggles[0].classList.add('selecionado');
-  } else etapaPeriodo.classList.remove('hidden');
+  if (exportTipoSelecionado === 'estoque') etapaPeriodo.classList.add('hidden');
+  else etapaPeriodo.classList.remove('hidden');
 }
 
 function selecionarFormato(btn) {
@@ -4158,9 +3974,6 @@ function resetarMenuExportar() {
   if (excelBtn) excelBtn.classList.add('selecionado');
   let etapaPeriodo = document.getElementById('exportEtapaPeriodo');
   let periodoDatas = document.getElementById('exportPeriodoDatas');
-  let etapaConfReset = document.getElementById('exportEtapaConferencia');
-  if (etapaConfReset) etapaConfReset.classList.add('hidden');
-  conferenciaExportSelecionada = null;
   if (etapaPeriodo) etapaPeriodo.classList.add('hidden');
   if (periodoDatas) periodoDatas.classList.add('hidden');
   let toggleBtns = document.querySelectorAll('.export-periodo-toggle button');
@@ -4174,7 +3987,7 @@ function resetarMenuExportar() {
 
 function executarExportacaoNova() {
   let dataInicioExp = null, dataFimExp = null;
-  if (exportUsarPeriodo && exportTipoSelecionado !== 'conferencia') {
+  if (exportUsarPeriodo) {
     dataInicioExp = document.getElementById('exportDataInicio').value;
     dataFimExp = document.getElementById('exportDataFim').value;
     if (!dataInicioExp && !dataFimExp) { mostrarToast('Informe pelo menos uma data', 'erro'); return; }
@@ -4185,21 +3998,10 @@ function executarExportacaoNova() {
   if (exportTipoSelecionado === 'historico' || exportTipoSelecionado === 'ambos') {
     let dadosFiltrados = historico.filter(h => {
       if (!dataInicioExp && !dataFimExp) return true;
-      let dataISO = h.data.split(',')[0].trim().split('/').reverse().join('-');
+      let dataISO = converterDataParaISO(h.data);
       return (!dataInicioExp || dataISO >= dataInicioExp) && (!dataFimExp || dataISO <= dataFimExp);
     });
     if (dadosFiltrados.length === 0) { mostrarToast('Nenhum registro no período', 'erro'); return; }
-  }
-  if (exportTipoSelecionado === 'conferencia') {
-    let dadosConf = conferenciaExportSelecionada;
-    if (!dadosConf) {
-      mostrarToast('Escolha uma conferência da lista', 'erro');
-      return;
-    }
-    if (exportFormatoSelecionado === 'pdf') confExportarPDFConferencia(false, dadosConf);
-    else confExportarResultado(false, dadosConf);
-    fecharModalConfig();
-    return;
   }
   if (exportTipoSelecionado === 'qrcodes') {
     let bobinas = coletarBobinasParaQR(dataInicioExp, dataFimExp);
@@ -5173,6 +4975,7 @@ function abrirConferencia() {
     } catch (e) {}
   }
   conferencia = { ativa: false, tipo: 'tudo', dataInicio: null, fotoEstoque: [], conferidas: [], extras: [], scannerAberto: false, leitor: null, continuoMode: false };
+  confResetarTipos();
   mostrarTelaConf('confTelaIniciar');
   document.getElementById('modalConferencia').classList.remove('hidden');
 }
@@ -5217,8 +5020,52 @@ function mostrarTelaConf(telaId) {
   }
 }
 
+/* Sincroniza os checkboxes de tipo da conferência:
+   "Tudo" marca/desmarca todos; se todos os específicos forem
+   marcados, "Tudo" volta a ficar marcado. */
+function confTipoAlterado(cb) {
+  let especificos = Array.from(document.querySelectorAll('input[name="confTipo"]')).filter(i => i.value !== 'tudo');
+  let cbTudo = document.querySelector('input[name="confTipo"][value="tudo"]');
+  if (cb.value === 'tudo') {
+    especificos.forEach(i => { i.checked = cb.checked; });
+  } else if (cbTudo) {
+    cbTudo.checked = especificos.every(i => i.checked);
+  }
+  confDestacarTipos();
+}
+
+function confDestacarTipos() {
+  document.querySelectorAll('label.conf-tipo-item').forEach(label => {
+    let input = label.querySelector('input');
+    if (input && input.checked) label.classList.add('selecionado');
+    else label.classList.remove('selecionado');
+  });
+}
+
+function confResetarTipos() {
+  document.querySelectorAll('input[name="confTipo"]').forEach(i => { i.checked = true; });
+  confDestacarTipos();
+}
+
+// Texto bonito para os tipos da conferência ('tudo', string única ou array)
+function nomeTiposConferencia(tipo) {
+  if (!tipo || tipo === 'tudo') return 'Todos';
+  if (Array.isArray(tipo)) {
+    if (tipo.length === 0) return 'Todos';
+    return tipo.map(t => nomeCompletoTipo(t)).join(' + ');
+  }
+  return nomeCompletoTipo(tipo);
+}
+
 function iniciarConferencia() {
-  let tipoSelecionado = document.querySelector('input[name="confTipo"]:checked').value;
+  let tiposSelecionados = Array.from(document.querySelectorAll('input[name="confTipo"]:checked'))
+    .map(i => i.value).filter(v => v !== 'tudo');
+  let cbTudo = document.querySelector('input[name="confTipo"][value="tudo"]');
+  let selecionarTudo = (cbTudo && cbTudo.checked) || tiposSelecionados.length === 4;
+  if (!selecionarTudo && tiposSelecionados.length === 0) {
+    mostrarToast('Selecione pelo menos um tipo para conferir', 'erro');
+    return;
+  }
   let foto = [];
   historico.forEach(h => {
     if (h.tipo !== 'Entrada' || h._removidaEstoque || h.consumida) return;
@@ -5227,7 +5074,7 @@ function iniciarConferencia() {
     let item = partes[0], versao = partes[1];
     let tipoItem = '';
     Object.keys(banco).forEach(t => { if (banco[t] && banco[t][item]) tipoItem = t; });
-    if (tipoSelecionado !== 'tudo' && tipoItem !== tipoSelecionado) return;
+    if (!selecionarTudo && !tiposSelecionados.includes(tipoItem)) return;
     if (!estoque[h.item] || estoque[h.item] <= 0) return;
     let tamanho = '';
     if (banco[tipoItem] && banco[tipoItem][item] && banco[tipoItem][item][versao]) tamanho = banco[tipoItem][item][versao].tamanho;
@@ -5240,13 +5087,11 @@ function iniciarConferencia() {
 
   if (foto.length === 0) { mostrarToast('Nenhuma bobina no estoque para conferir', 'erro'); return; }
   conferencia.ativa = true;
-  conferencia.tipo = tipoSelecionado;
+  conferencia.tipo = selecionarTudo ? 'tudo' : tiposSelecionados;
   conferencia.dataInicio = new Date().toLocaleString('pt-BR');
   conferencia.fotoEstoque = foto;
   conferencia.conferidas = [];
   conferencia.extras = [];
-  conferencia.historicoId = null;
-  conferencia.historicoCriadoISO = null;
   confSalvar();
   mostrarTelaConf('confTelaAndamento');
   confRenderizarLista();
@@ -5255,12 +5100,7 @@ function iniciarConferencia() {
 }
 
 function confSalvar() {
-  let dados = {
-    ativa: conferencia.ativa, tipo: conferencia.tipo, dataInicio: conferencia.dataInicio,
-    fotoEstoque: conferencia.fotoEstoque, conferidas: conferencia.conferidas, extras: conferencia.extras,
-    historicoId: conferencia.historicoId || null,
-    historicoCriadoISO: conferencia.historicoCriadoISO || null
-  };
+  let dados = { ativa: conferencia.ativa, tipo: conferencia.tipo, dataInicio: conferencia.dataInicio, fotoEstoque: conferencia.fotoEstoque, conferidas: conferencia.conferidas, extras: conferencia.extras };
   localStorage.setItem('conferencia', JSON.stringify(dados));
 confSalvarFirebase();
 }
@@ -5285,7 +5125,7 @@ function confRenderizarLista() {
 
   let html = '';
 
-  if ((dados.extras || []).length > 0) {
+  if (conferencia.extras.length > 0) {
     html += '<div style="font-size:12px;font-weight:700;color:#ca8a04;padding:4px 0;">⚠️ Extras (' + conferencia.extras.length + ')</div>';
     conferencia.extras.forEach((extra, idx) => {
       let textoBusca = normalizarTexto(extra.item + ' ' + extra.versao + ' ' + extra.peso);
@@ -5409,8 +5249,6 @@ async function confScannerQR() {
   }
   let collectorInput = document.getElementById('collectorInput');
   if (collectorInput) collectorInput.style.display = 'none';
-  let debugBox2 = document.getElementById('coletorDebug');
-  if (debugBox2) debugBox2.style.display = 'none';
   let statusLine = document.getElementById('confScannerStatus');
   if (statusLine) statusLine.classList.remove('hidden');
 
@@ -5441,38 +5279,42 @@ async function confScannerQR() {
 async function confAbrirColetor() {
   conferencia.coletorMode = true;
   await fecharTodosScanners();
-
-  let titulo = document.getElementById('confScannerTitulo');
-  if (titulo) titulo.textContent = '📟 Coletor de Dados · ' + APP_VERSION;
-
+  document.getElementById('confScannerTitulo').textContent = 'Coletor de Dados';
+  let statusText = conferencia.conferidas.length + ' conferida(s)';
   let statusLine = document.getElementById('confScannerStatus');
-  if (statusLine) statusLine.textContent = conferencia.conferidas.length + ' conferida(s)';
-
-  let logEl = document.getElementById('confScannerLog');
-  if (logEl) logEl.innerHTML = '';
-
+  if (statusLine) statusLine.textContent = statusText;
+  document.getElementById('confScannerLog').innerHTML = '';
   coletorBuffer = '';
-  coletorLimparBuffer();
-
+  
   let readerConf = document.getElementById('readerConf');
-  if (readerConf) { readerConf.innerHTML = ''; readerConf.style.display = 'none'; }
-
+  if (readerConf) readerConf.style.display = 'none';
   let collectorInput = document.getElementById('collectorInput');
   if (collectorInput) {
     collectorInput.style.display = 'block';
-    collectorInput.readOnly = false;                // coletor digita aqui
-    collectorInput.setAttribute('inputmode', 'none'); // sem teclado virtual
     collectorInput.value = '';
-    collectorInput.placeholder = 'Aguardando leitura do coletor...';
+    // Foco sem teclado
+    collectorInput.readOnly = true;
+    collectorInput.focus({ preventScroll: true });
+    collectorInput.blur();
+    collectorInput.focus({ preventScroll: true });
+    setTimeout(() => { collectorInput.readOnly = false; }, 100);
   }
-
-  let debugBox = document.getElementById('coletorDebug');
-  if (debugBox) debugBox.style.display = 'block';
 
   document.getElementById('modalScannerConf').classList.remove('hidden');
 
   iniciarMonitoramentoColetor();
-  mostrarToast('📟 Coletor ativo — pode bipar');
+
+  setTimeout(() => {
+    let inp = document.getElementById('collectorInput');
+    if (inp) {
+      inp.value = '';
+      inp.readOnly = true;
+      inp.focus({ preventScroll: true });
+      inp.blur();
+      inp.focus({ preventScroll: true });
+      setTimeout(() => { inp.readOnly = false; }, 100);
+    }
+  }, 100);
 }
 
 function confLogScanner(resultado, texto) {
@@ -5513,7 +5355,6 @@ async function confFecharScanner() {
   try { if (conferencia.leitor) { await conferencia.leitor.stop(); await conferencia.leitor.clear(); } } catch (e) {}
   conferencia.leitor = null;
   conferencia.coletorMode = false;
-  coletorLimparBuffer();
   if (coletorInterval) { clearInterval(coletorInterval); coletorInterval = null; }
   if (collectorFocusTimer) { clearInterval(collectorFocusTimer); collectorFocusTimer = null; }
   coletorBuffer = '';
@@ -5672,23 +5513,20 @@ function confAjustarEstoque() {
   mostrarToast('Estoque ajustado pela conferência');
 }
 
-function confExportarResultado(parcial, dados) {
-  parcial = (parcial === true);
-  dados = dados || conferencia;
-  let conferidas = dados.fotoEstoque.filter(b => dados.conferidas.includes(b.id));
-  let pendentes = dados.fotoEstoque.filter(b => !dados.conferidas.includes(b.id));
+function confExportarResultado() {
+  let conferidas = conferencia.fotoEstoque.filter(b => conferencia.conferidas.includes(b.id));
+  let pendentes = conferencia.fotoEstoque.filter(b => !conferencia.conferidas.includes(b.id));
   const wb = XLSX.utils.book_new();
   let linhas = [];
-  linhas.push([parcial ? 'CONFERÊNCIA DE INVENTÁRIO (PARCIAL — EM ANDAMENTO)' : 'CONFERÊNCIA DE INVENTÁRIO', '', '', '', '']);
-  linhas.push(['Data início:', dados.dataInicio || '', '', '', '']);
-  linhas.push(['Data fim:', parcial ? 'em andamento' : (dados.dataFim || new Date().toLocaleString('pt-BR')), '', '', '']);
-  if (parcial) linhas.push(['Exportado em:', new Date().toLocaleString('pt-BR'), '', '', '']);
-  linhas.push(['Tipo:', dados.tipo === 'tudo' ? 'Todos' : nomeCompletoTipo(dados.tipo), '', '', '']);
+  linhas.push(['CONFERÊNCIA DE INVENTÁRIO', '', '', '', '']);
+  linhas.push(['Data início:', conferencia.dataInicio, '', '', '']);
+  linhas.push(['Data fim:', new Date().toLocaleString('pt-BR'), '', '', '']);
+  linhas.push(['Tipo:', nomeTiposConferencia(conferencia.tipo), '', '', '']);
   linhas.push(['', '', '', '', '']);
   linhas.push(['RESUMO', '', '', '', '']);
   linhas.push(['Conferidas:', conferidas.length, '', '', '']);
   linhas.push(['Não encontradas:', pendentes.length, '', '', '']);
-  linhas.push(['Extras:', (dados.extras || []).length, '', '', '']);
+  linhas.push(['Extras:', conferencia.extras.length, '', '', '']);
   linhas.push(['', '', '', '', '']);
   if (conferidas.length > 0) {
     linhas.push(['CONFERIDAS', '', '', '', '']);
@@ -5705,98 +5543,13 @@ function confExportarResultado(parcial, dados) {
   if (conferencia.extras.length > 0) {
     linhas.push(['EXTRAS', '', '', '', '']);
     linhas.push(['Item', 'Versão', 'Medidas', 'Kg', 'Status']);
-    dados.extras.forEach(b => linhas.push([b.item, b.versao, b.tamanho || '', Math.round(b.peso), 'Extra']));
+    conferencia.extras.forEach(b => linhas.push([b.item, b.versao, b.tamanho || '', Math.round(b.peso), 'Extra']));
   }
   const ws = XLSX.utils.aoa_to_sheet(linhas);
   ws['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 14 }];
   XLSX.utils.book_append_sheet(wb, ws, 'Conferência');
-  XLSX.writeFile(wb, (parcial ? 'Conferencia_PARCIAL_' : 'Conferencia_') + getTimestamp() + '.xlsx');
-  mostrarToast(parcial ? 'Relatório parcial exportado' : 'Relatório exportado');
-}
-
-/* Exporta a conferência mesmo antes de finalizar (relatório parcial) */
-function confExportarParcial() {
-  let dados = obterConferenciaParaExport();
-  if (!dados) { mostrarToast('Nenhuma conferência encontrada', 'erro'); return; }
-  confExportarResultado(dados.ativa === true, dados);
-}
-
-/* Busca a conferência no localStorage (funciona mesmo com a conferência fechada) */
-function obterConferenciaParaExport() {
-  let salva = null;
-  try {
-    let txt = localStorage.getItem('conferencia');
-    if (txt) salva = JSON.parse(txt);
-  } catch (e) { salva = null; }
-  if (salva && Array.isArray(salva.fotoEstoque) && salva.fotoEstoque.length > 0) {
-    if (!Array.isArray(salva.conferidas)) salva.conferidas = [];
-    if (!Array.isArray(salva.extras)) salva.extras = [];
-    return salva;
-  }
-  if (conferencia && Array.isArray(conferencia.fotoEstoque) && conferencia.fotoEstoque.length > 0) return conferencia;
-  return null;
-}
-
-/* PDF da conferência (parcial ou final) */
-function confExportarPDFConferencia(parcial, dados) {
-  dados = dados || conferencia;
-  parcial = (parcial === true);
-  if (typeof window.jspdf === 'undefined') { mostrarToast('PDF indisponível', 'erro'); return; }
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'landscape' });
-  const pageW = doc.internal.pageSize.width;
-  const conferidas = dados.fotoEstoque.filter(b => dados.conferidas.includes(b.id));
-  const pendentes = dados.fotoEstoque.filter(b => !dados.conferidas.includes(b.id));
-  const extras = dados.extras || [];
-  if (conferidas.length === 0 && extras.length === 0) { mostrarToast('Nada para exportar', 'erro'); return; }
-
-  doc.setFillColor(30, 58, 138);
-  doc.rect(0, 0, pageW, 18, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.text(parcial ? 'Conferência de Estoques — PARCIAL' : 'Conferência de Estoques', 14, 12);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Gerado em: ' + new Date().toLocaleString('pt-BR'), pageW - 14, 12, { align: 'right' });
-  doc.setTextColor(0, 0, 0);
-
-  doc.setFontSize(9);
-  doc.text('Início: ' + (dados.dataInicio || '—') +
-            '   |   Fim: ' + (parcial ? 'em andamento' : (dados.dataFim || '—')) +
-            '   |   Tipo: ' + (dados.tipo === 'tudo' ? 'Todos' : nomeCompletoTipo(dados.tipo)) +
-            '   |   Conferidas: ' + conferidas.length +
-            '   |   Não encontradas: ' + pendentes.length +
-            '   |   Extras: ' + extras.length, 14, 25);
-
-  let body = [];
-  conferidas.forEach(b => body.push(['Conferida', b.item, b.versao, b.tamanho || '', Math.round(b.peso)]));
-  pendentes.forEach(b => body.push(['Não encontrada', b.item, b.versao, b.tamanho || '', Math.round(b.peso)]));
-  extras.forEach(b => body.push(['Extra', b.item, b.versao, b.tamanho || '', Math.round(b.peso)]));
-
-  doc.autoTable({
-    startY: 29,
-    head: [['Status', 'Item', 'Versão', 'Medidas', 'Kg']],
-    body: body,
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [240, 244, 255] },
-    columnStyles: {
-      0: { cellWidth: 34 }, 1: { cellWidth: 40 }, 2: { cellWidth: 20 },
-      3: { cellWidth: 34 }, 4: { cellWidth: 20 }
-    }
-  });
-
-  let totalPages = doc.internal.getNumberOfPages();
-  for (let p = 1; p <= totalPages; p++) {
-    doc.setPage(p);
-    doc.setFontSize(7);
-    doc.setTextColor(180, 180, 180);
-    doc.text('Página ' + p + '/' + totalPages, pageW / 2, doc.internal.pageSize.height - 5, { align: 'center' });
-  }
-
-  doc.save('Conferencia_' + (parcial ? 'PARCIAL_' : '') + getTimestamp() + '.pdf');
-  mostrarToast(parcial ? 'PDF parcial exportado' : 'PDF exportado');
+  XLSX.writeFile(wb, 'Conferencia_' + getTimestamp() + '.xlsx');
+  mostrarToast('Relatório exportado');
 }
 
 /* ================= FIREBASE MANUAL (SALVAR / SINCRONIZAR) ================= */
@@ -5963,6 +5716,9 @@ window.abrirAcoesHistorico = abrirAcoesHistorico;
 window.fecharModalHistoricoAcoes = fecharModalHistoricoAcoes;
 window.abrirQRDoHistorico = abrirQRDoHistorico;
 window.confirmarRemoverHistoricoSelecionado = confirmarRemoverHistoricoSelecionado;
+window.desfazerExclusaoDoHistorico = desfazerExclusaoDoHistorico;
+window.desfazerConsumoDoHistorico = desfazerConsumoDoHistorico;
+window.desfazerEntradaDoHistorico = desfazerEntradaDoHistorico;
 window.abrirScannerContinuo = abrirScannerContinuo;
 window.fecharScannerContinuo = fecharScannerContinuo;
 window.geradorFecharFinal = geradorFecharFinal;
@@ -6128,11 +5884,6 @@ async function confFinalizarColaborativo() {
 
   // Mostra resultado — o botão Juntar já está sempre visível
   finalizarConferencia();
-
-  // Salva no histórico da nuvem (lista usada no Exportar dados)
-  if (conferencia.ativa === false) {
-    confSalvarHistoricoNuvem(conferencia, false);
-  }
 }
 
 async function juntarConferencias() {
@@ -6211,9 +5962,6 @@ async function juntarConferencias() {
 
     confSalvar();
     finalizarConferencia();
-
-    // Atualiza a conferência unida no histórico da nuvem
-    if (conferencia.ativa === false) confSalvarHistoricoNuvem(conferencia, false);
     
     let totalUnico = nomesUsuarios.filter((n, i) => nomesUsuarios.indexOf(n) === i);
     let msg = '✅ ' + (totalUnico.length > 0 ? totalUnico.join(' + ') + ' — ' : '') + 'Conferências unidas!';
@@ -6236,6 +5984,7 @@ window.abrirConferencia = abrirConferencia;
 window.fecharConferencia = fecharConferencia;
 window.continuarConferencia = continuarConferencia;
 window.iniciarConferencia = iniciarConferencia;
+window.confTipoAlterado = confTipoAlterado;
 window.pausarConferencia = pausarConferencia;
 window.confMarcarManual = confMarcarManual;
 window.confDesmarcar = confDesmarcar;
@@ -6249,12 +5998,6 @@ window.finalizarConferencia = finalizarConferencia;
 window.finalizarConferenciaSilenciosa = finalizarConferenciaSilenciosa;
 window.confAjustarEstoque = confAjustarEstoque;
 window.confExportarResultado = confExportarResultado;
-window.confExportarParcial = confExportarParcial;
-window.confExportarPDFConferencia = confExportarPDFConferencia;
-window.obterConferenciaParaExport = obterConferenciaParaExport;
-window.confSalvarHistoricoNuvem = confSalvarHistoricoNuvem;
-window.confCarregarListaExport = confCarregarListaExport;
-window.confSelecionarConferenciaExport = confSelecionarConferenciaExport;
 
 // DOMContentLoaded consolidado no iniciarMonitoramentoColetor
 // O coletor é tratado exclusivamente pela função acima
