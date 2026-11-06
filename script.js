@@ -13,6 +13,38 @@ let coletorBufferGlobal = '';
 let coletorFlushTimer = null;
 let coletorUltimoCodigo = '';
 let coletorUltimoCodigoTs = 0;
+let coletorDebugEventos = 0;
+
+const APP_VERSION = 'v2014';
+
+/* Mostra no painel de diagnóstico do coletor o que está chegando */
+function coletorDebug(rotulo, detalhe) {
+  try {
+    let elVersao = document.getElementById('coletorDebugVersao');
+    if (elVersao) elVersao.textContent = APP_VERSION;
+
+    if (rotulo === 'evento') {
+      coletorDebugEventos++;
+      let ev = document.getElementById('coletorDebugEventos');
+      if (ev) ev.textContent = coletorDebugEventos;
+      let tk = document.getElementById('coletorDebugTecla');
+      if (tk) tk.textContent = detalhe || '—';
+      return;
+    }
+    if (rotulo === 'codigo') {
+      let cd = document.getElementById('coletorDebugCodigo');
+      if (cd) cd.textContent = detalhe || '—';
+      return;
+    }
+    if (rotulo === 'reset') {
+      coletorDebugEventos = 0;
+      ['coletorDebugEventos','coletorDebugTecla','coletorDebugCodigo'].forEach(function (id) {
+        let el = document.getElementById(id);
+        if (el) el.textContent = (id === 'coletorDebugEventos') ? '0' : '—';
+      });
+    }
+  } catch (e) {}
+}
 
 function coletorAtivo() {
   try {
@@ -43,6 +75,7 @@ async function processarLeituraColetorCodigo(codigo) {
   if (codigo === coletorUltimoCodigo && (agora - coletorUltimoCodigoTs) < 700) return;
   coletorUltimoCodigo = codigo;
   coletorUltimoCodigoTs = agora;
+  coletorDebug('codigo', codigo);
 
   // feedback visual no campo
   let input = document.getElementById('collectorInput');
@@ -91,6 +124,12 @@ document.addEventListener('keydown', function (e) {
   if (!coletorAtivo()) return;
   if (e.ctrlKey || e.altKey || e.metaKey) return;
 
+  coletorDebug('evento', '"' + (e.key || '?') + '" (' + (e.keyCode || 0) + ')');
+
+  // se o input está focado e editável, ele mesmo captura (evita duplicar)
+  let inp = document.getElementById('collectorInput');
+  if (inp && document.activeElement === inp && !inp.readOnly) return;
+
   if (e.key === 'Enter') {
     e.preventDefault();
     coletorProcessarBuffer();
@@ -112,18 +151,64 @@ document.addEventListener('keydown', function (e) {
   coletorFlushTimer = setTimeout(coletorProcessarBuffer, 400);
 }, true);
 
+function focarInputColetor() {
+  let input = document.getElementById('collectorInput');
+  if (!input) return;
+  try { input.focus({ preventScroll: true }); } catch (e) {}
+}
+
 function iniciarMonitoramentoColetor() {
   const input = document.getElementById('collectorInput');
-  if (input) {
-    input.readOnly = true;                // NUNCA abre teclado
-    input.setAttribute('inputmode', 'none');
-    input.value = '';
-  }
+  if (!input) return;
+
   coletorLimparBuffer();
   coletorUltimoCodigo = '';
   coletorUltimoCodigoTs = 0;
-  // tira o foco: teclado virtual não abre e as teclas seguem chegando no document
-  try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
+  coletorDebug('reset');
+
+  // Precisa ser editável: o coletor digita dentro do campo.
+  // inputmode="none" impede o teclado virtual de abrir.
+  input.readOnly = false;
+  input.setAttribute('inputmode', 'none');
+  input.value = '';
+
+  if (!input._coletorListeners) {
+    input._coletorListeners = true;
+
+    // 1) digitação completa (mais confiável em Android/coletor)
+    input.addEventListener('input', function () {
+      if (!coletorAtivo()) return;
+      coletorDebug('evento', 'input (' + input.value.length + ')');
+      if (collectorReadTimer) clearTimeout(collectorReadTimer);
+      // se não vier Enter, processa 250ms depois da última tecla
+      collectorReadTimer = setTimeout(function () {
+        let v = input.value.replace(/[\r\n\t]+/g, '').trim();
+        input.value = '';
+        if (v && v.length >= 3) processarLeituraColetorCodigo(v);
+      }, 250);
+    });
+
+    // 2) Enter do coletor
+    input.addEventListener('keydown', function (e) {
+      if (!coletorAtivo()) return;
+      if (e.key === 'Enter' || e.keyCode === 13) {
+        e.preventDefault();
+        if (collectorReadTimer) { clearTimeout(collectorReadTimer); collectorReadTimer = null; }
+        let v = input.value.replace(/[\r\n\t]+/g, '').trim();
+        input.value = '';
+        if (v && v.length >= 3) processarLeituraColetorCodigo(v);
+      }
+    });
+  }
+
+  // mantém o foco no campo (sem teclado, por causa do inputmode=none)
+  focarInputColetor();
+  if (collectorFocusTimer) clearInterval(collectorFocusTimer);
+  collectorFocusTimer = setInterval(function () {
+    if (!coletorAtivo()) return;
+    let inp = document.getElementById('collectorInput');
+    if (inp && document.activeElement !== inp) focarInputColetor();
+  }, 800);
 }
 
 
@@ -5324,6 +5409,8 @@ async function confScannerQR() {
   }
   let collectorInput = document.getElementById('collectorInput');
   if (collectorInput) collectorInput.style.display = 'none';
+  let debugBox2 = document.getElementById('coletorDebug');
+  if (debugBox2) debugBox2.style.display = 'none';
   let statusLine = document.getElementById('confScannerStatus');
   if (statusLine) statusLine.classList.remove('hidden');
 
@@ -5356,7 +5443,7 @@ async function confAbrirColetor() {
   await fecharTodosScanners();
 
   let titulo = document.getElementById('confScannerTitulo');
-  if (titulo) titulo.textContent = '📟 Coletor de Dados';
+  if (titulo) titulo.textContent = '📟 Coletor de Dados · ' + APP_VERSION;
 
   let statusLine = document.getElementById('confScannerStatus');
   if (statusLine) statusLine.textContent = conferencia.conferidas.length + ' conferida(s)';
@@ -5373,11 +5460,14 @@ async function confAbrirColetor() {
   let collectorInput = document.getElementById('collectorInput');
   if (collectorInput) {
     collectorInput.style.display = 'block';
-    collectorInput.readOnly = true;                 // não abre teclado
-    collectorInput.setAttribute('inputmode', 'none');
+    collectorInput.readOnly = false;                // coletor digita aqui
+    collectorInput.setAttribute('inputmode', 'none'); // sem teclado virtual
     collectorInput.value = '';
     collectorInput.placeholder = 'Aguardando leitura do coletor...';
   }
+
+  let debugBox = document.getElementById('coletorDebug');
+  if (debugBox) debugBox.style.display = 'block';
 
   document.getElementById('modalScannerConf').classList.remove('hidden');
 

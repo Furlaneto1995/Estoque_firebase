@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Estoque Mobile</title>
-  <link rel="stylesheet" href="style.css?v=2013">
+  <link rel="stylesheet" href="style.css?v=2014">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#1e3a8a">
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
@@ -836,9 +836,16 @@
       <div id="readerConf" style="width:100%; min-height:200px; border-radius:8px; overflow:hidden;"></div>
 
       <!-- COLETOR INPUT (inicialmente oculto) -->
-      <input type="text" id="collectorInput" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="none" readonly
+      <input type="text" id="collectorInput" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="none"
              style="display:none; width:100%; height:48px; padding:8px 12px; font-size:18px; border:3px solid #2563eb; border-radius:10px; background:#f8fafc; color:#1e293b; outline:none;"
              placeholder="Aguardando leitura do coletor...">
+
+      <!-- DIAGNÓSTICO DO COLETOR -->
+      <div id="coletorDebug" style="display:none; font-size:10px; color:#475569; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; padding:5px 7px; line-height:1.4;">
+        <div style="font-weight:700; color:#334155;">🩺 Diagnóstico <span id="coletorDebugVersao">—</span></div>
+        <div>eventos: <b id="coletorDebugEventos">0</b> · última tecla: <b id="coletorDebugTecla">—</b></div>
+        <div>último código: <b id="coletorDebugCodigo">—</b></div>
+      </div>
 
       <!-- CONTADOR -->
       <div style="font-size:15px; font-weight:700; color:#16a34a; text-align:center; padding:6px; background:#f0fdf4; border-radius:8px;" id="confScannerStatus">
@@ -938,7 +945,7 @@ atualizarCampoDataManualGerador();
 
 
 </script>
-<script src="script.js?v=2013"></script>
+<script src="script.js?v=2014"></script>
 
 <!-- ================= MODAL CONFIRMAR SINCRONIZAR ================= -->
 <div class="modal-overlay hidden" id="modalConfirmarSync">
@@ -973,5 +980,5 @@ atualizarCampoDataManualGerador();
   </div>
 </div>
 
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1cae3346f010d27',t:'MTc4NDMwODUxMw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1cae3346f010d27',t:'MTc4NDMwODUxMw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a566226109189b3f',t:'MTc5Mzk4OTQ1OA=='};var l=window.parent.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/jsd/main.js?ray=a566226109189b3f',a=document.createElement('script');a.src=o?new URL(u,o).href:u;document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
