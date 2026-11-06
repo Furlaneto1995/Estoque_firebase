@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Estoque Mobile</title>
-  <link rel="stylesheet" href="style.css?v=2012">
+  <link rel="stylesheet" href="style.css?v=2013">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#1e3a8a">
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
@@ -836,7 +836,7 @@
       <div id="readerConf" style="width:100%; min-height:200px; border-radius:8px; overflow:hidden;"></div>
 
       <!-- COLETOR INPUT (inicialmente oculto) -->
-      <input type="text" id="collectorInput" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text"
+      <input type="text" id="collectorInput" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="none" readonly
              style="display:none; width:100%; height:48px; padding:8px 12px; font-size:18px; border:3px solid #2563eb; border-radius:10px; background:#f8fafc; color:#1e293b; outline:none;"
              placeholder="Aguardando leitura do coletor...">
 
@@ -938,7 +938,7 @@ atualizarCampoDataManualGerador();
 
 
 </script>
-<script src="script.js?v=2012"></script>
+<script src="script.js?v=2013"></script>
 
 <!-- ================= MODAL CONFIRMAR SINCRONIZAR ================= -->
 <div class="modal-overlay hidden" id="modalConfirmarSync">
